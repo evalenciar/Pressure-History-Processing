@@ -3,3 +3,7 @@
 /Combined Data
 /templates
 /Testing Grounds*
+
+# Ignore these files
+single_rainflow_analysis_v2.2.py
+create_gif.py

@@ -15,9 +15,10 @@ import matplotlib.pyplot as plt
 import openpyxl
 import warnings
 import math
+import os
 
 templates_path = 'templates/'
-file_name = 'RLA (v1.6.9).xlsm'
+file_name = 'RLA (v1.7.0).xlsm'
 
 # Ignore all UserWarnings from openpyxl
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -30,7 +31,8 @@ plt.ioff()
 # =============================================================================
 
 class DentData:
-    def __init__(self, dent_ID, OD, WT, SMYS, MAOP, service_years, M, min_range, Lx, hx, SG, L1, L2, h1, h2, D1, D2):
+    def __init__(self, dent_category, dent_ID, OD, WT, SMYS, MAOP, service_years, M, min_range, Lx, hx, SG, L1, L2, h1, h2, D1, D2):
+        self.dent_category = dent_category
         self.dent_ID = dent_ID
         self.OD = OD
         self.WT = WT
@@ -49,8 +51,9 @@ class DentData:
         self.D1 = D1
         self.D2 = D2
 
-def liquid(P_list, P_time, results_path, dd):
+def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycles:bool=False, save_md49:bool=False):
     # Extract the information for the specified dent
+    dent_category = dd.dent_category
     dent_ID = dd.dent_ID
     OD = dd.OD
     WT = dd.WT
@@ -72,68 +75,82 @@ def liquid(P_list, P_time, results_path, dd):
     # Determine the operational pressures at the dent location. Taken from Equation (5) in API 1183 Section 6.6.3.1 Rainflow Counting
     P = Px(Lx, hx, P_list[0], P_list[1], SG, L1, L2, h1, h2, D1, D2)
 
-    # Rainflow Analysis using Python package 'rainflow'
+    # Rainflow Analysis using Python package 'rainflow'. Output is in format: Pressure Range [psig], Pressure Mean [psig], Cycle Count, Index Start, Index End
     cycles = pd.DataFrame(rainflow.extract_cycles(P)).to_numpy()
+
+    # Filter the cycles array based on the min_range using the Pressure Range (first column)
+    cycles = cycles[cycles[:, 0] > min_range]
 
     # Calculate the SSI, CI, and SSI MD49
     SSI = equivalent_cycles('ssi', cycles, OD, WT, SMYS, service_years, M, min_range)
     CI = equivalent_cycles('ci', cycles, OD, WT, SMYS, service_years, M, min_range)
     MD49_SSI, MD49_bins = MD49(cycles, OD, WT, SMYS, service_years, M, min_range)
-    
-    create_RLA_Excel(dent_ID, results_path, OD, WT, SMYS, service_years, MAOP, cycles, MD49_bins)
-    
-    df_P = pd.DataFrame(data=P, columns=['Pressure (psig)'], index=P_time)
-    df_P.to_csv(results_path + f"Feature {dent_ID} " + 'Interpolated_Pressure_History_Data.csv', header=False, index=False)
 
-    # Save the cycles to a .txt file
-    np.savetxt(results_path + f"Feature {dent_ID} " + 'cycles.csv', cycles, delimiter=',')
+    create_RLA_Excel(dent_ID, results_path, OD, WT, SMYS, service_years, MAOP, cycles, MD49_bins, min_range, dent_category)
 
-    # Save the MD49_bins to a .txt file
-    np.savetxt(results_path + f"Feature {dent_ID} " + 'md49_bins.csv', MD49_bins, delimiter=',')
+    if save_history:
+        df_P = pd.DataFrame(data=P, columns=['Pressure (psig)'], index=P_time)
+        df_P.to_csv(results_path + f"Feature {dent_ID} " + 'Interpolated_Pressure_History_Data.csv', header=False, index=False)
+
+    if save_cycles:
+        # Save the cycles to a .txt file
+        np.savetxt(results_path + f"Feature {dent_ID} " + 'cycles.csv', cycles, delimiter=',')
+
+    if save_md49:
+        # Save the MD49_bins to a .txt file
+        np.savetxt(results_path + f"Feature {dent_ID} " + 'md49_bins.csv', MD49_bins, delimiter=',')
     
     # Graphing
-    liquid_graphing(dent_ID, results_path, P, P_time)
+    liquid_graphing(dent_ID, results_path, P, P_time, dent_category)
     
     return SSI, CI, MD49_SSI, cycles, MD49_bins
   
-def liquid_graphing(dent_ID, results_path, P, P_time):
+def liquid_graphing(dent_ID, results_path, P, P_time, dent_category:str = ''):
     # Save the interpolated pressure history 
     fig, sp = plt.subplots(figsize=(8,4), dpi=240)
-    fig.suptitle(f'Pressure History for Feature {dent_ID}', fontsize=16)
+    fig.suptitle(f'Pressure History for {dent_category} Feature {dent_ID}', fontsize=16)
     sp.scatter(P_time, P, s=0.1)
     sp.set_ylim([0, max(1750, math.ceil(np.nanmax(P) / 250) * 250)]) # Set y-axis limit to a maximum of 2000 or the next multiple of 250 above the max pressure
     sp.set_ylabel('Interpolated Pressure (psig)')
     sp.set_xlabel('Date Time')
-    fig.savefig(results_path + f"{dent_ID:04d} Feature " + 'Interpolated_Pressure_History_Graph.png')
+    fig.savefig(os.path.join(results_path, f"{dent_category}_Feature_{dent_ID}_Interpolated_Pressure_History.png"))
     plt.close(fig)
   
-def create_RLA_Excel(dent_ID, results_path, OD, WT, grade, service_years, MAOP, cycles, MD49_bins):
+def create_RLA_Excel(dent_ID, results_path, OD, WT, grade, service_years, MAOP, cycles, MD49_bins, min_range, dent_category:str=''):
+    # Defaults:
+    start_row = 3
+    rainflow_column = 1 # Column A
+    md49_column = 37    # Column AK
     
     ref_path = templates_path + file_name
     wb = openpyxl.load_workbook(filename=ref_path, read_only=False, keep_vba=True)
     
     # Update the values in the Summary tab
     wbs = wb['Summary']
-    wbs['D2'] = OD
-    wbs['D3'] = WT
-    wbs['D4'] = grade
-    wbs['D6'] = service_years
-    wbs['D12'] = MAOP
+    wbs['D4'] = round(OD, 3)
+    wbs['D5'] = round(WT, 3)
+    wbs['D6'] = round(grade, 0)
+    wbs['D8'] = round(MAOP, 0)
+    wbs['D9'] = round(service_years, 3)
+    wbs['D10'] = min_range
+
+    wbs['H4'] = str(dent_category)
+    wbs['H5'] = str(dent_ID)
     
-    # # Import the values in the Rainflow tab (begins on A3)
-    # wbs = wb['Rainflow']
-    # for row_i, row_val in enumerate(cycles):
-    #     for col_i, _ in enumerate(row_val):
-    #         wbs.cell(row=3 + row_i, column=1 + col_i).value = float(cycles[row_i, col_i])
-            
-    # Import the MD49_bins to the MD49 section (begins on L3)
+    # Import the values in the Rainflow tab (begins on A3)
+    wbs = wb['Rainflow']
+    wbs['A1'] = f'Rainflow Analysis Outputs with Filter > {round(min_range,1)} psig'
+    for row_i, row_val in enumerate(cycles):
+        for col_i, _ in enumerate(row_val):
+            wbs.cell(row=start_row + row_i, column=rainflow_column + col_i).value = float(cycles[row_i, col_i])
+
+    # Import the MD49_bins to the MD49 section (begins on AK3)
     wbs = wb['Rainflow']
     for row_i, row_val in enumerate(MD49_bins):
-        wbs.cell(row=3 + row_i, column=12).value = float(MD49_bins[row_i])
-        
+        wbs.cell(row=start_row + row_i, column=md49_column).value = float(MD49_bins[row_i])
+
     # Save the resultant Excel workbook into the designated folder
-    wb_path = results_path + f"{dent_ID:04d} Feature " + file_name
-    wb.save(filename=wb_path)
+    wb.save(filename=os.path.join(results_path, f"{dent_category}_Feature_{dent_ID}_Results.xlsm"))
     wb.close()
 
 def Px(Lx,hx,P1,P2,SG,L1,L2,h1,h2,D1,D2):

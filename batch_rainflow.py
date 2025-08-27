@@ -1,12 +1,14 @@
 # %%
 import pandas as pd
-import rainflow_analysis as rfa
 import os
 import time
 
+import rainflow_analysis as rfa
+import API1183_v2 as api
+
 categories = ['KS12', 'KS13', 'KS14']
-pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Screening Software)\Client Documents\462-J209370\KS12-14 Data Collection - Copy.xlsx"
-pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Screening Software)\Client Documents\462-J209370\Pump Stations.xlsx"
+pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Screening Software)\Client Documents\KS12-14 Data Collection - (Fixed Headers).xlsx"
+pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Screening Software)\Client Documents\Pump Stations.xlsx"
 
 df_PT = pd.read_excel(pipe_tally, sheet_name="Sheet1", header=1, engine='calamine')
 
@@ -21,7 +23,11 @@ for category in categories:
 
     # Load the pressure history CSV file in folder "Combined Data" based on matching substring
     pressure_history_path = os.path.join(os.getcwd(), "Combined Data", f"{category}_combined.csv")
-    df_pressure_history = pd.read_csv(pressure_history_path, header=0)
+    # # Read only the header to get column names, this will be used to give dtype for loading the data
+    # column_names = pd.read_csv(pressure_history_path, nrows=0).columns.tolist()
+    # dtypes = {col: float for col in column_names[1:]}
+    # df_pressure_history = pd.read_csv(pressure_history_path, header=0, dtype=dtypes, parse_dates=[column_names[0]])
+    df_pressure_history = pd.read_csv(pressure_history_path, header=0, low_memory=False)
 
     ####################################################################
     # Perform RLA on each feature of interest
@@ -71,6 +77,7 @@ for category in categories:
             
             # Build the dent dict. Convert to Imperial units if necessary.
             dd = rfa.DentData(
+                dent_category = category,
                 dent_ID = dent['Feature ID'],
                 OD = dent['TCPL NPS'], # Already using inch
                 WT = dent['TCPL Nominal Wall Thickness [mm]'] * 0.0393701,  # Convert mm to inch
@@ -78,7 +85,7 @@ for category in categories:
                 MAOP = dent['TCPL MOP/MAOP [kPa]'] * 0.145038,  # Convert kPa to psi
                 service_years = (time_data[-1] - time_data[0]) / pd.Timedelta(days=365.25),  # Calculate service years from time data
                 M = 3,  # Assume exponent of M = 3.0
-                min_range = 0.0,  # Do not filter any psig values
+                min_range = 5,  # Filter at 5psig
                 Lx = dent['AP Measure (m)'] * 3.28084,  # Convert meters to feet
                 hx = dent['Dent Elevation [m]'] * 3.28084,  # Convert meters to feet
                 SG = 0.84, # Assumption from https://www.engineeringtoolbox.com/specific-gravity-liquid-fluids-d_294.html
@@ -118,6 +125,10 @@ for category in categories:
         except Exception as e:
             print(f"{count:04d} / {df_dents.shape[0]:04d} ({round(time.time() - starttime)}s): Error processing {category} Feature {dent['Feature ID']}: {e}")
             continue
+
+        # Perform the Data Smoothing
+
+        # Perform the MD-4-9 Processing
 
     # Save the df_results DataFrame to an Excel file
     df_results = pd.DataFrame(results)
