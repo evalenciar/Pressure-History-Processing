@@ -1,16 +1,71 @@
 # %%
 import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
 import os
+import traceback
 import time
+import openpyxl
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 import rainflow_analysis as rfa
 import API1183_v2 as api
+import processing as pro
+
+overall_start_time = time.time()
 
 categories = ['KS12', 'KS13', 'KS14']
 pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Screening Software)\Client Documents\KS12-14 Data Collection - (Fixed Headers).xlsx"
 pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Screening Software)\Client Documents\Pump Stations.xlsx"
+output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Screening Software)\Client Documents\Results"
 
 df_PT = pd.read_excel(pipe_tally, sheet_name="Sheet1", header=1, engine='calamine')
+
+def create_contour_plot(df, category, feature_id, output_folder):
+    # Create a 2x1 figure having contour line plots of: raw and smooth data
+    # Establish the levels as the absolute maximum and minimum of both the raw and smooth radius values
+    # levels = np.linspace(min([df.o_radius.min(), df.f_radius.min()]), max([df.o_radius.max(), df.f_radius.max()]), 17)
+    levels_raw = np.linspace(df.o_radius.min(), df.o_radius.max(), 17)
+    levels_smooth = np.linspace(df.f_radius.min(), df.f_radius.max(), 17)
+
+    fig, axs = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    # Raw data contour plot
+    c1 = axs[0].contourf(df.o_axial, df.o_circ, df.o_radius.T, levels=levels_raw, cmap='viridis')
+    cb1 = fig.colorbar(c1, ax=axs[0])
+    cb1.set_label("Radius (inches)")
+    axs[0].set_ylabel(f"{category} Feature {feature_id}: Raw Data")
+    axs[0].set_yticks([])
+
+    # Smoothed data contour plot
+    c2 = axs[1].contourf(df.f_axial, df.f_circ, df.f_radius.T, levels=levels_smooth, cmap='viridis')
+    cb2 = fig.colorbar(c2, ax=axs[1])
+    cb2.set_label("Radius (inches)")
+    axs[1].set_xlabel("Axial Position (inches)")
+    axs[1].set_ylabel(f"{category} Feature {feature_id}: Smoothed Data")
+    axs[1].set_yticks([])
+
+    plt.suptitle(f"Comparison for {category} Feature {feature_id}", fontsize=16)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_folder, f"{category}_Feature_{feature_id}_Contour.jpg"), dpi=300)
+    plt.close(fig)
+
+def create_smoothed_data_sheet(xlsm_file, df_smoothed, df_feature):
+    # Save the df_smoothed as a new sheet in the existing .xlsm file
+    wb = openpyxl.load_workbook(xlsm_file, read_only=False, keep_vba=True)
+    # Remove the sheet if it already exists (optional, for clean overwrite)
+    if "Smoothed Data" in wb.sheetnames:
+        wb.remove(wb["Smoothed Data"])
+    # Create a new sheet named "Smoothed Data"
+    ws = wb.create_sheet(title="Smoothed Data")
+    for r in dataframe_to_rows(df_smoothed, index=True, header=True):
+        ws.append(r)
+    # Create a new sheet named "Pipe Tally" and save the df_feature data
+    ws_tally = wb.create_sheet(title="Pipe Tally")
+    for r in dataframe_to_rows(df_feature, index=False, header=True):
+        ws_tally.append(r)
+    # Save and close the document (keep the same name)
+    wb.save(filename=xlsm_file)
+    wb.close()
 
 for category in categories:
     print(f"Processing category: {category}")
@@ -40,8 +95,9 @@ for category in categories:
 
     results = []
 
-    results_folder = f"{category} Rainflow Results"
-    results_folder = os.path.join(os.getcwd(), results_folder) + '\\'
+    results_folder = f"{category} Results"
+    # results_folder = os.path.join(os.getcwd(), results_folder) + '\\'
+    results_folder = os.path.join(output_folder, results_folder) + '\\'
     os.mkdir(results_folder)
     count = 0
 
@@ -50,7 +106,7 @@ for category in categories:
 
     for idx, dent in df_dents.iterrows():
         count += 1
-        starttime = time.time()
+        start_time = time.time()
         try:
             abs_dist = dent['AP Measure (m)']
             
@@ -107,7 +163,7 @@ for category in categories:
             os.mkdir(results_path)
 
             # Perform RLA for liquids
-            # print(f"{count:04d} / {df_dents.shape[0]:04d} ({round(time.time() - starttime)}s): Processing Feature {dent['Feature ID']}...")
+            # print(f"{count:04d} / {df_dents.shape[0]:04d} ({round(time.time() - start_time)}s): Processing Feature {dent['Feature ID']}...")
             SSI, CI, MD49_SSI, *_ = rfa.liquid([upstream_pressure, downstream_pressure], time_data, results_path, dd)
             
             result_dict = {
@@ -126,15 +182,61 @@ for category in categories:
                 f.write(f"{result_dict}\n")
 
             # Print or save the results as needed
-            print(f"{count:04d} / {df_dents.shape[0]:04d} ({round(time.time() - starttime)}s): Finished processing {category} Feature {dent['Feature ID']}")
+            print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Finished rainflow analysis.")
 
         except Exception as e:
-            print(f"{count:04d} / {df_dents.shape[0]:04d} ({round(time.time() - starttime)}s): Error processing {category} Feature {dent['Feature ID']}: {e}")
+            print(f"{category} Feature {dent['Feature ID']}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error processing rainflow analysis: {e}")
             continue
 
-        # Perform the Data Smoothing
+        ######################################################################
+        # Perform the Data Smoothing using the newly created Excel document
+        ######################################################################
 
+        file_path = os.path.join(results_path, f"{category}_Feature_{dd.dent_ID}_Results.xlsm")
+        # If category is KS12, use ILI_format = 'KS12', otherwise use ILI_format = 'KS1314'
+        if category == 'KS12':
+            ILI_format = 'KS12'
+        else:
+            ILI_format = 'KS1314'
+
+        try:
+            # Create a Process class for each file
+            df = pro.Process(file_path, ILI_format, dd.OD, dd.WT, dd.SMYS, dd.dent_ID)
+            # Smooth the data
+            df.smooth_data()
+            # Create a new DataFrame containing smoothed data
+            df_smoothed = pd.DataFrame(data=df.f_radius, index=df.f_axial, columns=df.f_circ)
+            # Create contour plots for the smoothed data
+            create_contour_plot(df_smoothed, category, dd.dent_ID, results_path)
+            # Create a new sheet in the existing Excel file for the smoothed data
+            create_smoothed_data_sheet(file_path, df_smoothed, df)
+
+            print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully saved smoothed data to file: '{os.path.basename(file_path)}'")
+
+            # Save results to notepad after each iteration. Keep the notepad in the parent output folder (one directory higher)
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_Smoothing_Results.txt"), "a") as f:
+                f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully saved smoothed data to file: '{os.path.basename(file_path)}'\n")
+
+        except Exception as e:
+            print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error saving smoothed data to file: '{os.path.basename(file_path)}. Error: {e}")
+            continue
+
+        ######################################################################
         # Perform the MD-4-9 Processing
+        ######################################################################
+        try:
+            api.process_dent_file(file_path)
+            print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully processed MD49: '{os.path.basename(file_path)}'")
+            # Save results to notepad after each iteration. Keep the notepad in the parent output folder (one directory higher)
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_MD49_Results.txt"), "a") as f:
+                f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully processed MD49: '{os.path.basename(file_path)}'\n")
+
+        except Exception as e:
+            print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error processing MD49 for file: '{os.path.basename(file_path)}'. Error: {e}")
+            print(traceback.format_exc())
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_MD49_Results.txt"), "a") as f:
+                f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error processing MD49 for file: '{os.path.basename(file_path)}'. Error: {e}\n")
+                f.write(traceback.format_exc() + "\n")
 
     # Save the df_results DataFrame to an Excel file
     df_results = pd.DataFrame(results)

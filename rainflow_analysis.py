@@ -18,7 +18,7 @@ import math
 import os
 
 templates_path = 'templates/'
-file_name = 'RLA (v1.7.0).xlsm'
+file_name = 'RLA (v1.7.1).xlsm'
 
 # Ignore all UserWarnings from openpyxl
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -31,7 +31,7 @@ plt.ioff()
 # =============================================================================
 
 class DentData:
-    def __init__(self, dent_category, dent_ID, OD, WT, SMYS, MAOP, service_years, M, min_range, Lx, hx, SG, L1, L2, h1, h2, D1, D2):
+    def __init__(self, dent_category, dent_ID, OD, WT, SMYS, MAOP, service_years, M, min_range, Lx, hx, SG, L1, L2, h1, h2, D1, D2, confidence, CPS, interaction_weld, interaction_corrosion, dent_depth_percent, ili_pressure):
         self.dent_category = dent_category
         self.dent_ID = dent_ID
         self.OD = OD
@@ -50,6 +50,12 @@ class DentData:
         self.h2 = h2
         self.D1 = D1
         self.D2 = D2
+        self.confidence = confidence
+        self.CPS = CPS
+        self.interaction_weld = interaction_weld
+        self.interaction_corrosion = interaction_corrosion
+        self.dent_depth_percent = dent_depth_percent
+        self.ili_pressure = ili_pressure
 
 def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycles:bool=False, save_md49:bool=False):
     # Extract the information for the specified dent
@@ -75,6 +81,9 @@ def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycle
     # Determine the operational pressures at the dent location. Taken from Equation (5) in API 1183 Section 6.6.3.1 Rainflow Counting
     P = Px(Lx, hx, P_list[0], P_list[1], SG, L1, L2, h1, h2, D1, D2)
 
+    # Determine the mean pressure as %SMYS where s = PD / (2t) [%]
+    P_mean_smys = 100 * (np.mean(P) * OD / (2 * WT)) / SMYS
+
     # Rainflow Analysis using Python package 'rainflow'. Output is in format: Pressure Range [psig], Pressure Mean [psig], Cycle Count, Index Start, Index End
     cycles = pd.DataFrame(rainflow.extract_cycles(P)).to_numpy()
 
@@ -86,7 +95,7 @@ def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycle
     CI = equivalent_cycles('ci', cycles, OD, WT, SMYS, service_years, M, min_range)
     MD49_SSI, MD49_bins = MD49(cycles, OD, WT, SMYS, service_years, M, min_range)
 
-    create_RLA_Excel(dent_ID, results_path, OD, WT, SMYS, service_years, MAOP, cycles, MD49_bins, min_range, dent_category)
+    create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys)
 
     if save_history:
         df_P = pd.DataFrame(data=P, columns=['Pressure (psig)'], index=P_time)
@@ -115,8 +124,23 @@ def liquid_graphing(dent_ID, results_path, P, P_time, dent_category:str = ''):
     sp.set_xlabel('Date Time')
     fig.savefig(os.path.join(results_path, f"{dent_category}_Feature_{dent_ID}_Interpolated_Pressure_History.png"))
     plt.close(fig)
-  
-def create_RLA_Excel(dent_ID, results_path, OD, WT, grade, service_years, MAOP, cycles, MD49_bins, min_range, dent_category:str=''):
+
+def create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys):
+    dent_category = dd.dent_category
+    dent_ID = dd.dent_ID
+    OD = dd.OD 
+    WT = dd.WT 
+    SMYS = dd.SMYS
+    MAOP = dd.MAOP
+    service_years = dd.service_years
+    min_range = dd.min_range
+    confidence = dd.confidence
+    CPS = dd.CPS
+    interaction_weld = dd.interaction_weld
+    interaction_corrosion = dd.interaction_corrosion
+    dent_depth_percent = dd.dent_depth_percent
+    ili_pressure = dd.ili_pressure
+
     # Defaults:
     start_row = 3
     rainflow_column = 1 # Column A
@@ -129,7 +153,7 @@ def create_RLA_Excel(dent_ID, results_path, OD, WT, grade, service_years, MAOP, 
     wbs = wb['Summary']
     wbs['D4'] = round(OD, 3)
     wbs['D5'] = round(WT, 3)
-    wbs['D6'] = round(grade, 0)
+    wbs['D6'] = round(SMYS, 0)
     wbs['D8'] = round(MAOP, 0)
     wbs['D9'] = round(service_years, 3)
     wbs['D10'] = min_range
@@ -148,6 +172,15 @@ def create_RLA_Excel(dent_ID, results_path, OD, WT, grade, service_years, MAOP, 
     wbs = wb['Rainflow']
     for row_i, row_val in enumerate(MD49_bins):
         wbs.cell(row=start_row + row_i, column=md49_column).value = float(MD49_bins[row_i])
+
+    # Save the P_mean_smys
+    wbs['K61'] = ili_pressure
+    wbs['K63'] = dent_depth_percent
+    wbs['K65'] = P_mean_smys
+    wbs['K67'] = interaction_corrosion
+    wbs['K68'] = interaction_weld
+    wbs['K70'] = confidence
+    wbs['K71'] = CPS
 
     # Save the resultant Excel workbook into the designated folder
     wb.save(filename=os.path.join(results_path, f"{dent_category}_Feature_{dent_ID}_Results.xlsm"))
