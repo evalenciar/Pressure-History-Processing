@@ -24,6 +24,7 @@ import math
 import numpy as np
 from scipy.signal import savgol_filter
 from openpyxl.utils.dataframe import dataframe_to_rows
+import matplotlib.pyplot as plt
 
 palette = [
     '#1f77b4',  # muted blue
@@ -156,7 +157,7 @@ def _find_deflection_initiation(data, nominal_radius, window_size=11, slope_tole
     
     return start_idx
 
-def find_inbound_deflection_start(inbound_data, nominal_radius, window_size=11, slope_tolerance=0.001, closeness_percentage=5, buffer_offset=5, min_consecutive_deviations=3, circumferential_mode=False):
+def find_inbound_deflection_start(inbound_data, nominal_radius, window_size=11, slope_tolerance=0.003, closeness_percentage=5, buffer_offset=5, min_consecutive_deviations=3, circumferential_mode=False):
     """
     Finds the index where the caliper begins deflecting in the inbound half of the data.
     
@@ -300,7 +301,7 @@ def determine_nominal(df: pd.Series, expected_nominal: float, threshold: float) 
     # If the difference is within a threshold percentage, then use the expected nominal radius, otherwise use the calculated average
     return avg_nominal
 
-def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
+def process_dent_file(file_path: Path, OD, WT, sheet_name: str="Smoothed Data"):
     # Defaults
     baseline_axial = 0.025
     baseline_circum = -0.15
@@ -309,16 +310,20 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     df = pd.read_excel(file_path, sheet_name=sheet_name, skiprows=[1], index_col=0)
 
     # Find deepest dent point
-    z_min, theta_min = df.stack().idxmin()
+    # Ignore the first 10% of the data to avoid noise at the edges
+    # z_min, theta_min = df.stack().idxmin()
+    z_min, theta_min = df.iloc[math.ceil(df.shape[0]*0.1):,:].stack().idxmin()
     # theta_min, z_min = df.stack().idxmin()
     axial_profile   = df[theta_min]
     circum_profile  = df.loc[z_min]
 
     # Split axial data into US/DS
-    ax_pos      = np.argmin(axial_profile.values)
+    # ax_pos      = np.argmin(axial_profile.values)
+    # Determine the axial index of the dent peak, ignoring the first 10% of the data to avoid noise at the edges
+    ax_pos      = np.argmin(axial_profile.iloc[math.ceil(len(axial_profile)*0.1):].values) + math.ceil(len(axial_profile)*0.1) # adjust for ignored section
     axial_up    = axial_profile.iloc[:ax_pos+1]
     axial_down  = axial_profile.iloc[ax_pos:]
-    max_dist = math.ceil(axial_profile.index.max()/50)*50
+    # max_dist = math.ceil(axial_profile.index.max()/50)*50
     
     # Split circum data to CCW/CW
     ce_pos      = np.argmin(circum_profile.values)
@@ -332,12 +337,11 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # Open the file_path Excel document and add new sheets
     wb = openpyxl.load_workbook(file_path, read_only=False, keep_vba=True)
 
-    # Load the metadata from the Summary tab
-    metadata = {
-        'Pipe OD' : wb['Summary']['D2'].value,  # Outer diameter (inches)
-        'WT' : wb['Summary']['D3'].value,       # Wall thickness (inches)
-        'SMYS' : wb['Summary']['D4'].value,     # Specified minimum yield strength (psi)
-    }
+    # Determine the Excel cell address of the deepest dent point (z_min, theta_min) and save it to wb['Rainflow']['K75]
+    # Need the cell address and adjust for Excel indexing and the skipped row
+    z_min_row = df.index.get_loc(z_min) + 3  # +3 for the skipped rows
+    theta_min_col = df.columns.get_loc(theta_min) + 2  # +2 for Excel 1-based indexing
+    wb['Rainflow']['K78'] = f"{openpyxl.utils.get_column_letter(theta_min_col)}{z_min_row}"
 
     # Create a new sheet titled "Axial Profiles", and assing to sht
     axial_name = 'Axial Profiles'
@@ -351,14 +355,14 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # --- 3.1 Compute axial baseline by walking & interpolating ---
     
     # Upstream
-    nominal_default    = (metadata['Pipe OD'] / 2) - metadata['WT']
+    nominal_default    = (OD / 2) - WT
     nominal_IR = determine_nominal(df, nominal_default, 5)
     nominal_us = nominal_IR
     rads_us       = axial_up.values
     dists_us      = axial_up.index.values
     dent_depth_us = nominal_us - rads_us.min()
     baseline_us_default   = nominal_us - baseline_axial * dent_depth_us
-    rads_us_idx = find_inbound_deflection_start(rads_us, nominal_us, slope_tolerance=0.004)
+    rads_us_idx = find_inbound_deflection_start(rads_us, nominal_us)
     baseline_us = rads_us[rads_us_idx] if rads_us_idx is not None else baseline_us_default
     # Re-establish the dent_depth_us value based on the new baseline_us value
     dent_depth_us = baseline_us - rads_us.min()
@@ -619,11 +623,11 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     rads_ccw, angs_ccw = circum_ccw.values, circum_ccw.index.values
     dent_depth_ccw   = nominal - rads_ccw.min()
     baseline_ccw_default     = nominal - baseline_circum * dent_depth_ccw
-    rads_ccw_idx = find_inbound_deflection_start(rads_ccw, nominal, slope_tolerance=0.004, circumferential_mode=True)
+    rads_ccw_idx = find_inbound_deflection_start(rads_ccw, nominal, circumferential_mode=True)
     # baseline_ccw = rads_ccw[rads_ccw_idx] if rads_ccw_idx is not None else baseline_ccw_default
     baseline_ccw = baseline_us
     # Re-establish the dent_depth_ccw value based on the new baseline_ccw value
-    dent_depth_ccw = baseline_ccw - rads_ccw.min()
+    dent_depth_ccw_us = baseline_ccw - rads_ccw.min()
 
     # find peak index
     peak_idx_ccw     = np.argmin(rads_ccw)
@@ -645,7 +649,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
             frac = (baseline_ccw - r0) / (r1 - r0)
             baseline_dist_ccw = a0 + frac * (a1 - a0)
     
-    peak_deg_ccw = angs_ccw[peak_idx_ccw]
+    peak_deg_ccw_us = angs_ccw[peak_idx_ccw]
     
     
     # 2) CW (clockwise) – search forward from the dent peak
@@ -656,7 +660,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # baseline_cw = rads_cw[rads_cw_idx] if rads_cw_idx is not None else baseline_cw_default
     baseline_cw = baseline_us
     # Re-establish the dent_depth_cw value based on the new baseline_cw value
-    dent_depth_cw = baseline_cw - rads_cw.min()
+    dent_depth_cw_us = baseline_cw - rads_cw.min()
 
     peak_idx_cw     = np.argmin(rads_cw)
     # walk forward until we reach or exceed the baseline
@@ -676,16 +680,16 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
             frac = (baseline_cw - r0) / (r1 - r0)
             baseline_dist_cw = a0 + frac * (a1 - a0)
     
-    peak_deg_cw = angs_cw[peak_idx_cw]
+    peak_deg_cw_us = angs_cw[peak_idx_cw]
 
     # LAX table header - counterclockwise
     sht['E27'] = 'Upstream Counterclockwise Lengths'
-    sht['E28'] = 'Max Dent Depth'; sht['G28'] = dent_depth_ccw
+    sht['E28'] = 'Max Dent Depth'; sht['G28'] = dent_depth_ccw_us
     sht['E29'] = 'Baseline';       sht['F29'] = baseline_dist_ccw; sht['G29'] = baseline_ccw
 
     # LAX table header - clockwise
     sht['K27'] = 'Upstream Clockwise Lengths'
-    sht['K28'] = 'Max Dent Depth'; sht['M28'] = dent_depth_cw
+    sht['K28'] = 'Max Dent Depth'; sht['M28'] = dent_depth_cw_us
     sht['K29'] = 'Baseline';       sht['L29'] = baseline_dist_cw; sht['M29'] = baseline_cw
     
     # Prepare LTR% & endpoints - ccwstream
@@ -705,15 +709,15 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     base_row    = horiz_start - 1  # for baseline endpoints
 
     # baseline points - ccwstream
-    sht[f'E{base_row}'] = peak_deg_ccw
+    sht[f'E{base_row}'] = peak_deg_ccw_us
     sht[f'F{base_row}'] = baseline_dist_ccw
     sht[f'G{base_row}'] = baseline_ccw
     sht[f'H{base_row}'] = baseline_ccw
 
-    targets_ccw = []
+    targets_ccw_us = []
     for i, p in enumerate(percentages_ccw):
-        # target_r_ccw = baseline_ccw - (p/100) * dent_depth_ccw
-        target_r_ccw = rads_ccw.min() + (1 - p/100) * dent_depth_ccw
+        # target_r_ccw = baseline_ccw - (p/100) * dent_depth_ccw_us
+        target_r_ccw = rads_ccw.min() + (1 - p/100) * dent_depth_ccw_us
     
         # walk backward from the dent‐peak until radius >= target_r_ccw
         j = ce_pos
@@ -722,7 +726,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     
         if radii_ccw[j] < target_r_ccw:
             # never rose back to the target → use the peak location
-            x_at = peak_deg_ccw
+            x_at = peak_deg_ccw_us
         else:
             # interpolate between j and j+1
             r0, a0 = radii_ccw[j],   distances_ccw[j]
@@ -733,7 +737,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
                 frac = (target_r_ccw - r0) / (r1 - r0)
                 x_at = a0 + frac*(a1 - a0)
     
-        LTR = abs(x_at - peak_deg_ccw)
+        LTR = abs(x_at - peak_deg_ccw_us)
         row = 30 + i
         sht[f'E{row}'] = f'LTR{p}%'
         sht[f'F{row}'] = LTR
@@ -741,23 +745,23 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
 
         # chart endpoints in columns H–K
         r = horiz_start + i
-        sht[f'E{r}'] = peak_deg_ccw
+        sht[f'E{r}'] = peak_deg_ccw_us
         sht[f'F{r}'] = x_at
         sht[f'G{r}'] = target_r_ccw
         sht[f'H{r}'] = target_r_ccw
 
-        targets_ccw.append((p, x_at))   
+        targets_ccw_us.append((p, x_at))   
         
     # baseline endpoints - cwstream
-    sht[f'K{base_row}'] = peak_deg_cw
+    sht[f'K{base_row}'] = peak_deg_cw_us
     sht[f'L{base_row}'] = baseline_dist_cw
     sht[f'M{base_row}'] = baseline_cw
     sht[f'N{base_row}'] = baseline_cw
 
-    targets_cw = []
+    targets_cw_us = []
     for i, p in enumerate(percentages_cw):
-        # target_r_cw = baseline_cw - (p/100) * dent_depth_cw
-        target_r_cw = rads_cw.min() + (1 - p/100) * dent_depth_cw
+        # target_r_cw = baseline_cw - (p/100) * dent_depth_cw_us
+        target_r_cw = rads_cw.min() + (1 - p/100) * dent_depth_cw_us
         # exact match?
         exact = np.isclose(radii_cw, target_r_cw)
         if exact.any():
@@ -778,26 +782,26 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
                 # never reaches target, use last point
                 x_at = distances_cw[-1]
     
-        LTR = abs(x_at - peak_deg_cw)
+        LTR = abs(x_at - peak_deg_cw_us)
         row = 30 + i
         sht[f'K{row}'] = f'LTR{p}%'
         sht[f'L{row}'] = LTR
         sht[f'M{row}'] = target_r_cw
 
         r = horiz_start + i
-        sht[f'K{r}'] = peak_deg_cw
+        sht[f'K{r}'] = peak_deg_cw_us
         sht[f'L{r}'] = x_at
         sht[f'M{r}'] = target_r_cw
         sht[f'N{r}'] = target_r_cw
     
-        targets_cw.append((p, x_at))
+        targets_cw_us.append((p, x_at))
 
     # ccwstream Areas
     sht['E68'] = 'Counterclockwise Areas'
     sht['E69'] = 'Distance'
     sht['F69'] = 'Radius'
-    start_ccw = min(baseline_dist_ccw, peak_deg_ccw)
-    end_ccw   = max(baseline_dist_ccw, peak_deg_ccw)
+    start_ccw = min(baseline_dist_ccw, peak_deg_ccw_us)
+    end_ccw   = max(baseline_dist_ccw, peak_deg_ccw_us)
     mask_seg_ccw = (circum_ccw.index >= start_ccw) & (circum_ccw.index <= end_ccw)
     seg_dist_ccw = circum_ccw.index[mask_seg_ccw].tolist()
     seg_rad_ccw  = circum_ccw.values[mask_seg_ccw].tolist()
@@ -810,8 +814,8 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     sht['K68'] = 'Clockwise Areas'
     sht['K69'] = 'Distance'
     sht['L69'] = 'Radius'
-    start_cw = min(baseline_dist_cw, peak_deg_cw)
-    end_cw   = max(baseline_dist_cw, peak_deg_cw)
+    start_cw = min(baseline_dist_cw, peak_deg_cw_us)
+    end_cw   = max(baseline_dist_cw, peak_deg_cw_us)
     mask_seg_cw = (circum_cw.index >= start_cw) & (circum_cw.index <= end_cw)
     seg_dist_cw = circum_cw.index[mask_seg_cw].tolist()
     seg_rad_cw  = circum_cw.values[mask_seg_cw].tolist()
@@ -843,7 +847,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # TR% cumulative areas - counterclockwise
     cum_row = 30
     for p in [85, 75, 60, 50, 40, 30, 20, 15, 10]:
-        x_at_p = next(x for pct, x in targets_ccw if pct == p)
+        x_at_p = next(x for pct, x in targets_ccw_us if pct == p)
         idx_p  = min(range(len(seg_dist_ccw)), key=lambda k: abs(seg_dist_ccw[k] - x_at_p))
         cum_area = sum(area_list_ccw[idx_p:])
         sht[f'H{cum_row}'] = f'ATR{p}%'
@@ -853,7 +857,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # TR% cumulative areas - clockwise
     cum_row = 30
     for p in [85,75,60,50,40,30,20,15,10]:
-        x_at_p = next(x for pct, x in targets_cw if pct == p)
+        x_at_p = next(x for pct, x in targets_cw_us if pct == p)
         idx_p  = min(range(len(seg_dist_cw)), key=lambda k: abs(seg_dist_cw[k] - x_at_p))
         # sum from baseline inward to the p% point
         cum_area = sum(area_list_cw[:idx_p+1])
@@ -881,11 +885,11 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     rads_ccw, angs_ccw = circum_ccw.values, circum_ccw.index.values
     dent_depth_ccw   = nominal - rads_ccw.min()
     baseline_ccw_default     = nominal - baseline_circum * dent_depth_ccw
-    rads_ccw_idx = find_inbound_deflection_start(rads_ccw, nominal, slope_tolerance=0.004, circumferential_mode=True)
+    rads_ccw_idx = find_inbound_deflection_start(rads_ccw, nominal, circumferential_mode=True)
     # baseline_ccw = rads_ccw[rads_ccw_idx] if rads_ccw_idx is not None else baseline_ccw_default
     baseline_ccw = baseline_ds
     # Re-establish the dent_depth_ccw value based on the new baseline_ccw value
-    dent_depth_ccw = baseline_ccw - rads_ccw.min()
+    dent_depth_ccw_ds = baseline_ccw - rads_ccw.min()
 
     # find peak index
     peak_idx_ccw     = np.argmin(rads_ccw)
@@ -907,7 +911,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
             frac = (baseline_ccw - r0) / (r1 - r0)
             baseline_dist_ccw = a0 + frac * (a1 - a0)
     
-    peak_deg_ccw = angs_ccw[peak_idx_ccw]
+    peak_deg_ccw_ds = angs_ccw[peak_idx_ccw]
     
     
     # 2) CW (clockwise) – search forward from the dent peak
@@ -918,7 +922,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # baseline_cw = rads_cw[rads_cw_idx] if rads_cw_idx is not None else baseline_cw_default
     baseline_cw = baseline_ds
     # Re-establish the dent_depth_cw value based on the new baseline_cw value
-    dent_depth_cw = baseline_cw - rads_cw.min()
+    dent_depth_cw_ds = baseline_cw - rads_cw.min()
 
     peak_idx_cw     = np.argmin(rads_cw)
     # walk forward until we reach or exceed the baseline
@@ -938,16 +942,16 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
             frac = (baseline_cw - r0) / (r1 - r0)
             baseline_dist_cw = a0 + frac * (a1 - a0)
     
-    peak_deg_cw = angs_cw[peak_idx_cw]
+    peak_deg_cw_ds = angs_cw[peak_idx_cw]
 
     # LAX table header - counterclockwise
     sht['E27'] = 'Downstream Counterclockwise Lengths'
-    sht['E28'] = 'Max Dent Depth'; sht['G28'] = dent_depth_ccw
+    sht['E28'] = 'Max Dent Depth'; sht['G28'] = dent_depth_ccw_ds
     sht['E29'] = 'Baseline';       sht['F29'] = baseline_dist_ccw; sht['G29'] = baseline_ccw
 
     # LAX table header - clockwise
     sht['K27'] = 'Downstream Clockwise Lengths'
-    sht['K28'] = 'Max Dent Depth'; sht['M28'] = dent_depth_cw
+    sht['K28'] = 'Max Dent Depth'; sht['M28'] = dent_depth_cw_ds
     sht['K29'] = 'Baseline';       sht['L29'] = baseline_dist_cw; sht['M29'] = baseline_cw
     
     # Prepare LTR% & endpoints - ccwstream
@@ -967,15 +971,15 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     base_row    = horiz_start - 1  # for baseline endpoints
 
     # baseline points - ccwstream
-    sht[f'E{base_row}'] = peak_deg_ccw
+    sht[f'E{base_row}'] = peak_deg_ccw_ds
     sht[f'F{base_row}'] = baseline_dist_ccw
     sht[f'G{base_row}'] = baseline_ccw
     sht[f'H{base_row}'] = baseline_ccw
 
-    targets_ccw = []
+    targets_ccw_ds = []
     for i, p in enumerate(percentages_ccw):
-        # target_r_ccw = baseline_ccw - (p/100) * dent_depth_ccw
-        target_r_ccw = rads_ccw.min() + (1 - p/100) * dent_depth_ccw
+        # target_r_ccw = baseline_ccw - (p/100) * dent_depth_ccw_ds
+        target_r_ccw = rads_ccw.min() + (1 - p/100) * dent_depth_ccw_ds
     
         # walk backward from the dent‐peak until radius >= target_r_ccw
         j = ce_pos
@@ -984,7 +988,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     
         if radii_ccw[j] < target_r_ccw:
             # never rose back to the target → use the peak location
-            x_at = peak_deg_ccw
+            x_at = peak_deg_ccw_ds
         else:
             # interpolate between j and j+1
             r0, a0 = radii_ccw[j],   distances_ccw[j]
@@ -995,7 +999,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
                 frac = (target_r_ccw - r0) / (r1 - r0)
                 x_at = a0 + frac*(a1 - a0)
     
-        LTR = abs(x_at - peak_deg_ccw)
+        LTR = abs(x_at - peak_deg_ccw_ds)
         row = 30 + i
         sht[f'E{row}'] = f'LTR{p}%'
         sht[f'F{row}'] = LTR
@@ -1003,23 +1007,23 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
 
         # chart endpoints in columns H–K
         r = horiz_start + i
-        sht[f'E{r}'] = peak_deg_ccw
+        sht[f'E{r}'] = peak_deg_ccw_ds
         sht[f'F{r}'] = x_at
         sht[f'G{r}'] = target_r_ccw
         sht[f'H{r}'] = target_r_ccw
 
-        targets_ccw.append((p, x_at))   
+        targets_ccw_ds.append((p, x_at))   
         
     # baseline endpoints - cwstream
-    sht[f'K{base_row}'] = peak_deg_cw
+    sht[f'K{base_row}'] = peak_deg_cw_ds
     sht[f'L{base_row}'] = baseline_dist_cw
     sht[f'M{base_row}'] = baseline_cw
     sht[f'N{base_row}'] = baseline_cw
 
-    targets_cw = []
+    targets_cw_ds = []
     for i, p in enumerate(percentages_cw):
-        # target_r_cw = baseline_cw - (p/100) * dent_depth_cw
-        target_r_cw = rads_cw.min() + (1 - p/100) * dent_depth_cw
+        # target_r_cw = baseline_cw - (p/100) * dent_depth_cw_ds
+        target_r_cw = rads_cw.min() + (1 - p/100) * dent_depth_cw_ds
         # exact match?
         exact = np.isclose(radii_cw, target_r_cw)
         if exact.any():
@@ -1040,26 +1044,26 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
                 # never reaches target, use last point
                 x_at = distances_cw[-1]
     
-        LTR = abs(x_at - peak_deg_cw)
+        LTR = abs(x_at - peak_deg_cw_ds)
         row = 30 + i
         sht[f'K{row}'] = f'LTR{p}%'
         sht[f'L{row}'] = LTR
         sht[f'M{row}'] = target_r_cw
 
         r = horiz_start + i
-        sht[f'K{r}'] = peak_deg_cw
+        sht[f'K{r}'] = peak_deg_cw_ds
         sht[f'L{r}'] = x_at
         sht[f'M{r}'] = target_r_cw
         sht[f'N{r}'] = target_r_cw
     
-        targets_cw.append((p, x_at))
+        targets_cw_ds.append((p, x_at))
 
     # ccwstream Areas
     sht['E68'] = 'Counterclockwise Areas'
     sht['E69'] = 'Distance'
     sht['F69'] = 'Radius'
-    start_ccw = min(baseline_dist_ccw, peak_deg_ccw)
-    end_ccw   = max(baseline_dist_ccw, peak_deg_ccw)
+    start_ccw = min(baseline_dist_ccw, peak_deg_ccw_ds)
+    end_ccw   = max(baseline_dist_ccw, peak_deg_ccw_ds)
     mask_seg_ccw = (circum_ccw.index >= start_ccw) & (circum_ccw.index <= end_ccw)
     seg_dist_ccw = circum_ccw.index[mask_seg_ccw].tolist()
     seg_rad_ccw  = circum_ccw.values[mask_seg_ccw].tolist()
@@ -1072,8 +1076,8 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     sht['K68'] = 'Clockwise Areas'
     sht['K69'] = 'Distance'
     sht['L69'] = 'Radius'
-    start_cw = min(baseline_dist_cw, peak_deg_cw)
-    end_cw   = max(baseline_dist_cw, peak_deg_cw)
+    start_cw = min(baseline_dist_cw, peak_deg_cw_ds)
+    end_cw   = max(baseline_dist_cw, peak_deg_cw_ds)
     mask_seg_cw = (circum_cw.index >= start_cw) & (circum_cw.index <= end_cw)
     seg_dist_cw = circum_cw.index[mask_seg_cw].tolist()
     seg_rad_cw  = circum_cw.values[mask_seg_cw].tolist()
@@ -1105,7 +1109,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # TR% cumulative areas - counterclockwise
     cum_row = 30
     for p in [85, 75, 60, 50, 40, 30, 20, 15, 10]:
-        x_at_p = next(x for pct, x in targets_ccw if pct == p)
+        x_at_p = next(x for pct, x in targets_ccw_ds if pct == p)
         idx_p  = min(range(len(seg_dist_ccw)), key=lambda k: abs(seg_dist_ccw[k] - x_at_p))
         cum_area = sum(area_list_ccw[idx_p:])
         sht[f'H{cum_row}'] = f'ATR{p}%'
@@ -1115,7 +1119,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     # TR% cumulative areas - clockwise
     cum_row = 30
     for p in [85,75,60,50,40,30,20,15,10]:
-        x_at_p = next(x for pct, x in targets_cw if pct == p)
+        x_at_p = next(x for pct, x in targets_cw_ds if pct == p)
         idx_p  = min(range(len(seg_dist_cw)), key=lambda k: abs(seg_dist_cw[k] - x_at_p))
         # sum from baseline inward to the p% point
         cum_area = sum(area_list_cw[:idx_p+1])
@@ -1124,124 +1128,126 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
         cum_row += 1
 
     # --- 8) Shape Results: 4‑panel summary (directly reference sheet cells) ---
-    sht_res = wb.create_sheet('Shape Results')
+    # sht_res = wb.create_sheet('Shape Results')
+    sht_res = wb['Rainflow']
     
-    # Titles
-    start_circUS = 2 + len(percentages_us)
-    start_circDS = 2 + start_circUS + len(percentages_ccw)
-    sht_res['A1'] = 'Axial - Upstream'
-    sht_res['F1'] = 'Axial - Downstream'
-    sht_res[f'A{start_circUS}'] = 'Upstream Circumferential - Counterclockwise'
-    sht_res[f'F{start_circUS}'] = 'Upstream Circumferential - Clockwise'
-    sht_res[f'A{start_circDS}'] = 'Downstream Circumferential - Counterclockwise'
-    sht_res[f'F{start_circDS}'] = 'Downstream Circumferential - Clockwise'
+    # # Titles
+    # start_circUS = 2 + len(percentages_us)
+    # start_circDS = 2 + start_circUS + len(percentages_ccw)
+    # sht_res['A1'] = 'Axial - Upstream'
+    # sht_res['F1'] = 'Axial - Downstream'
+    # sht_res[f'A{start_circUS}'] = 'Upstream Circumferential - Counterclockwise'
+    # sht_res[f'F{start_circUS}'] = 'Upstream Circumferential - Clockwise'
+    # sht_res[f'A{start_circDS}'] = 'Downstream Circumferential - Counterclockwise'
+    # sht_res[f'F{start_circDS}'] = 'Downstream Circumferential - Clockwise'
 
     # Upstream/Downstream
-    # copy the twelve LAX% labels
-    for i, p in enumerate(percentages_us):
-        row = 2 + i
-        sht_res[f'A{row}'] = f'LAX{p}%'
-        sht_res[f'F{row}'] = f'LAX{p}%'  # same percentages for downstream
+    # # copy the twelve LAX% labels
+    # for i, p in enumerate(percentages_us):
+    #     row = 2 + i
+    #     sht_res[f'A{row}'] = f'LAX{p}%'
+    #     sht_res[f'F{row}'] = f'LAX{p}%'  # same percentages for downstream
 
-    # copy the nine AX% labels
-    for i, p in enumerate([85,75,60,50,40,30,20,15,10]):
-        row = 2 + i
-        sht_res[f'C{row}'] = f'AX{p}%'
-        sht_res[f'H{row}'] = f'AX{p}%'
+    # # copy the nine AX% labels
+    # for i, p in enumerate([85,75,60,50,40,30,20,15,10]):
+    #     row = 2 + i
+    #     sht_res[f'C{row}'] = f'AX{p}%'
+    #     sht_res[f'H{row}'] = f'AX{p}%'
     
     # now formulas to pull the values
     for i in range(len(percentages_us)):
         src_row = 30 + i
-        dst_row = 2 + i
+        dst_row = 33 + i
     
         # Upstream LAX from Axial!F30:F41 → ShapeResults!B2:B13
-        sht_res[f'B{dst_row}'] = f"='{axial_name}'!F{src_row}"
+        sht_res[f'AH{dst_row}'] = f"='{axial_name}'!F{src_row}"
 
         # Downstream LAX from Axial!L30:L41 → ShapeResults!G2:G13
-        sht_res[f'G{dst_row}'] = f"='{axial_name}'!L{src_row}"
+        sht_res[f'AM{dst_row}'] = f"='{axial_name}'!L{src_row}"
     
     for i in range(9):
         src_row = 30 + i
-        dst_row = 2 + i
+        dst_row = 33 + i
     
         # Upstream AX from Axial!I30:I38 → ShapeResults!D2:D10
-        sht_res[f'D{dst_row}'] = f"='{axial_name}'!I{src_row}"
+        sht_res[f'AJ{dst_row}'] = f"='{axial_name}'!I{src_row}"
 
         # Downstream AX from Axial!O30:O38 → ShapeResults!H2:H10
-        sht_res[f'I{dst_row}'] = f"='{axial_name}'!O{src_row}"
+        sht_res[f'AO{dst_row}'] = f"='{axial_name}'!O{src_row}"
 
     # US-CCW/CW
-    # copy the twelve LAX% labels
-    for i, p in enumerate(percentages_ccw):
-        row = start_circUS + 1 + i
-        sht_res[f'A{row}'] = f'LTR{p}%'
-        sht_res[f'F{row}'] = f'LTR{p}%'
+    # # copy the twelve LAX% labels
+    # for i, p in enumerate(percentages_ccw):
+    #     row = start_circUS + 1 + i
+    #     sht_res[f'A{row}'] = f'LTR{p}%'
+    #     sht_res[f'F{row}'] = f'LTR{p}%'
 
-    # copy the nine AX% labels
-    for i, p in enumerate([85,75,60,50,40,30,20,15,10]):
-        row = start_circUS + 1 + i
-        sht_res[f'C{row}'] = f'ATR{p}%'
-        sht_res[f'H{row}'] = f'ATR{p}%'
+    # # copy the nine AX% labels
+    # for i, p in enumerate([85,75,60,50,40,30,20,15,10]):
+    #     row = start_circUS + 1 + i
+    #     sht_res[f'C{row}'] = f'ATR{p}%'
+    #     sht_res[f'H{row}'] = f'ATR{p}%'
 
     for i, p in enumerate(percentages_ccw):
         src_row = 30 + i
-        dst_row = start_circUS + 1 + i
+        dst_row = 47 + i
     
         # pull CCW length from Circumferential!F30:F41 → ShapeResults!B{start_circUS+…}
-        sht_res[f'B{dst_row}'] = f"='{circumUS_name}'!F{src_row}"
+        sht_res[f'AH{dst_row}'] = f"='{circumUS_name}'!F{src_row}"
 
         # pull CW  length from Circumferential!L30:L41 → ShapeResults!G{start_circUS+…}
-        sht_res[f'G{dst_row}'] = f"='{circumUS_name}'!L{src_row}"
+        sht_res[f'AM{dst_row}'] = f"='{circumUS_name}'!L{src_row}"
 
     # areas for CCW (cells I30:I38) and CW (cells O30:O38)
     for i in range(9):
         src_row = 30 + i
-        dst_row_cc = start_circUS + 1 + i
+        dst_row_cc = 47 + i
 
         # CCW area → ShapeResults!C{dst_row_cc}
-        sht_res[f'D{dst_row_cc}'] = f"='{circumUS_name}'!I{src_row}"
+        sht_res[f'AJ{dst_row_cc}'] = f"='{circumUS_name}'!I{src_row}"
 
         # CW area → ShapeResults!H{dst_row_cc}
-        sht_res[f'I{dst_row_cc}'] = f"='{circumUS_name}'!O{src_row}"
+        sht_res[f'AO{dst_row_cc}'] = f"='{circumUS_name}'!O{src_row}"
 
     # DS-CCW/CW
-    # copy the twelve LAX% labels
-    for i, p in enumerate(percentages_ccw):
-        row = start_circDS + 1 + i
-        sht_res[f'A{row}'] = f'LTR{p}%'
-        sht_res[f'F{row}'] = f'LTR{p}%'
+    # # copy the twelve LAX% labels
+    # for i, p in enumerate(percentages_ccw):
+    #     row = start_circDS + 1 + i
+    #     sht_res[f'A{row}'] = f'LTR{p}%'
+    #     sht_res[f'F{row}'] = f'LTR{p}%'
 
-    # copy the nine AX% labels
-    for i, p in enumerate([85,75,60,50,40,30,20,15,10]):
-        row = start_circDS + 1 + i
-        sht_res[f'C{row}'] = f'ATR{p}%'
-        sht_res[f'H{row}'] = f'ATR{p}%'
+    # # copy the nine AX% labels
+    # for i, p in enumerate([85,75,60,50,40,30,20,15,10]):
+    #     row = start_circDS + 1 + i
+    #     sht_res[f'C{row}'] = f'ATR{p}%'
+    #     sht_res[f'H{row}'] = f'ATR{p}%'
 
     for i, p in enumerate(percentages_ccw):
         src_row = 30 + i
-        dst_row = start_circDS + 1 + i
+        dst_row = 61 + i
     
         # pull CCW length from Circumferential!F30:F41 → ShapeResults!B{start_circDS+…}
-        sht_res[f'B{dst_row}'] = f"='{circumDS_name}'!F{src_row}"
+        sht_res[f'AH{dst_row}'] = f"='{circumDS_name}'!F{src_row}"
 
         # pull CW  length from Circumferential!L30:L41 → ShapeResults!G{start_circDS+…}
-        sht_res[f'G{dst_row}'] = f"='{circumDS_name}'!L{src_row}"
+        sht_res[f'AM{dst_row}'] = f"='{circumDS_name}'!L{src_row}"
 
     # areas for CCW (cells I30:I38) and CW (cells O30:O38)
     for i in range(9):
         src_row = 30 + i
-        dst_row_cc = start_circDS + 1 + i
+        dst_row_cc = 61 + i
 
         # CCW area → ShapeResults!C{dst_row_cc}
-        sht_res[f'D{dst_row_cc}'] = f"='{circumDS_name}'!I{src_row}"
+        sht_res[f'AJ{dst_row_cc}'] = f"='{circumDS_name}'!I{src_row}"
 
         # CW area → ShapeResults!H{dst_row_cc}
-        sht_res[f'I{dst_row_cc}'] = f"='{circumDS_name}'!O{src_row}"
+        sht_res[f'AO{dst_row_cc}'] = f"='{circumDS_name}'!O{src_row}"
 
     #######################################################################################
     # Add graphs
     #######################################################################################
     # Axial plot using a Solid Line for the Upstream data, and a Dashed line for the Downstream data
+    sht_output = wb['Figures']
     sht = wb[axial_name]
     chart = ScatterChart()
     chart.title = "Dent Axial Profile"
@@ -1272,8 +1278,8 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.x_axis.majorTickMark = 'out'
     chart.y_axis.majorTickMark = 'out'
 
-    # Insert chart at E2
-    sht.add_chart(chart, "E2")
+    # Insert chart at A60
+    sht_output.add_chart(chart, "A60")
 
     # Zoomed in view axial plot the same as the previous, plus additional lines for the Baseline and LAX lines
     chart = ScatterChart()
@@ -1283,8 +1289,8 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.width = 24
     chart.height = 10
     # Set the x axis to min of baseline_dist_ds and max of baseline_dist_us
-    chart.x_axis.min = baseline_dist_us
-    chart.x_axis.max = baseline_dist_ds
+    chart.x_axis.scaling.min = baseline_dist_us
+    chart.x_axis.scaling.max = baseline_dist_ds
 
     # Add series for Upstream and Downstream
     chart.series.append(series1)
@@ -1335,7 +1341,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.y_axis.majorTickMark = 'out'
 
     # Insert chart at E43
-    sht.add_chart(chart, "E43")
+    sht_output.add_chart(chart, "P60")
 
     # Upstream - Circumferential plot using a Solid Line for the Counterclockwise data, and a Dashed line for the Clockwise data
     sht = wb[circumUS_name]
@@ -1369,7 +1375,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.y_axis.majorTickMark = 'out'
 
     # Insert chart at E2
-    sht.add_chart(chart, "E2")
+    sht_output.add_chart(chart, "A80")
 
     # Zoomed in view circumferential plot the same as the previous, plus additional lines for the Baseline and LAX lines
     chart = ScatterChart()
@@ -1379,8 +1385,8 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.width = 24
     chart.height = 10
     # Set the x axis to min of baseline_dist_cw and max of baseline_dist_ccw
-    chart.x_axis.min = baseline_dist_cw
-    chart.x_axis.max = baseline_dist_ccw
+    chart.x_axis.scaling.min = baseline_dist_cw
+    chart.x_axis.scaling.max = baseline_dist_ccw
 
     # Add series for CCW and CW
     chart.series.append(series1)
@@ -1401,7 +1407,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.series.append(series_BCW)
 
     # Add series for all of the LAX% lines, with the color being defined based on the palette selection
-    for p, _ in targets_ccw:
+    for p, _ in targets_ccw_us:
         color = palette[p % len(palette)]
         r = horiz_start + percentages_ccw.index(p)
         val = Reference(sht, min_col=7, min_row=r, max_col=8)
@@ -1411,7 +1417,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
         # val_series.graphicalPropertiesline.solidFill = Color(rgb=color)
         chart.series.append(val_series)
 
-    for p, _ in targets_cw:
+    for p, _ in targets_cw_us:
         color = palette[p % len(palette)]
         r = horiz_start + percentages_cw.index(p)
         val = Reference(sht, min_col=13, min_row=r, max_col=14)
@@ -1431,7 +1437,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.y_axis.majorTickMark = 'out'
 
     # Insert chart at E43
-    sht.add_chart(chart, "E43")
+    sht_output.add_chart(chart, "P80")
 
     # Downstrea - Circumferential plot using a Solid Line for the Counterclockwise data, and a Dashed line for the Clockwise data
     sht = wb[circumDS_name]
@@ -1465,7 +1471,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.y_axis.majorTickMark = 'out'
 
     # Insert chart at E2
-    sht.add_chart(chart, "E2")
+    sht_output.add_chart(chart, "A100")
 
     # Zoomed in view circumferential plot the same as the previous, plus additional lines for the Baseline and LAX lines
     chart = ScatterChart()
@@ -1475,8 +1481,8 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.width = 24
     chart.height = 10
     # Set the x axis to min of baseline_dist_cw and max of baseline_dist_ccw
-    chart.x_axis.min = baseline_dist_cw
-    chart.x_axis.max = baseline_dist_ccw
+    chart.x_axis.scaling.min = baseline_dist_cw
+    chart.x_axis.scaling.max = baseline_dist_ccw
 
     # Add series for CCW and CW
     chart.series.append(series1)
@@ -1497,7 +1503,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.series.append(series_BCW)
 
     # Add series for all of the LAX% lines, with the color being defined based on the palette selection
-    for p, _ in targets_ccw:
+    for p, _ in targets_ccw_ds:
         color = palette[p % len(palette)]
         r = horiz_start + percentages_ccw.index(p)
         val = Reference(sht, min_col=7, min_row=r, max_col=8)
@@ -1507,7 +1513,7 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
         # val_series.graphicalPropertiesline.solidFill = Color(rgb=color)
         chart.series.append(val_series)
 
-    for p, _ in targets_cw:
+    for p, _ in targets_cw_ds:
         color = palette[p % len(palette)]
         r = horiz_start + percentages_cw.index(p)
         val = Reference(sht, min_col=13, min_row=r, max_col=14)
@@ -1527,8 +1533,80 @@ def process_dent_file(file_path: Path, sheet_name: str="Smoothed Data"):
     chart.y_axis.majorTickMark = 'out'
 
     # Insert chart at E43
-    sht.add_chart(chart, "E43")
+    sht_output.add_chart(chart, "P100")
 
     # Save and close the Excel workbook
     wb.save(file_path)
     wb.close()
+
+    # Export PNG files of the charts
+
+    # --- Axial Profile Plot with Upstream and Downstream LAX% lines ---
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(axial_df.index, axial_df['Upstream'], label='Upstream', color=palette[0])
+    ax.plot(axial_df.index, axial_df['Downstream'], label='Downstream', color=palette[1], linestyle='--')
+
+    # Plot Upstream LAX% lines
+    for i, (p, x_at) in enumerate(targets_us):
+        target_r = rads_us.min() + (1 - p/100) * dent_depth_us
+        # Horizontal line from LAX% point to deepest dent
+        ax.plot([peak_dist_us, x_at], [target_r, target_r], color=palette[(2+i)%len(palette)], linestyle='-', linewidth=1, label=f'LAX{p}% US')
+
+    # Plot Downstream LAX% lines
+    for i, (p, x_at) in enumerate(targets_ds):
+        target_r = rads_ds.min() + (1 - p/100) * dent_depth_ds
+        ax.plot([x_at, peak_dist_ds], [target_r, target_r], color=palette[(2+i)%len(palette)], linestyle='--', linewidth=1, label=f'LAX{p}% DS')
+
+    ax.set_title("Axial Lengths")
+    ax.set_xlabel("Axial Distance (in)")
+    ax.set_ylabel("Radius (in)")
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    fig.tight_layout()
+    fig.savefig(str(file_path).replace('.xlsm', '_Axial_Lengths.png'), dpi=300)
+    plt.close(fig)
+
+    # --- Circumferential Plot: Upstream Counterclockwise and Clockwise LAX% lines ---
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(circum_ccw.index, circum_ccw.values, label='Counterclockwise', color=palette[0])
+    ax.plot(circum_cw.index, circum_cw.values, label='Clockwise', color=palette[1], linestyle='--')
+
+    # Plot Upstream Counterclockwise LAX% lines
+    for i, (p, x_at) in enumerate(targets_ccw_us):
+        target_r_ccw = rads_ccw.min() + (1 - p/100) * dent_depth_ccw_us
+        ax.plot([peak_deg_ccw_us, x_at], [target_r_ccw, target_r_ccw], color=palette[(2+i)%len(palette)], linestyle='-', linewidth=1, label=f'LAX{p}% US-CCW')
+
+    # Plot Upstream Clockwise LAX% lines
+    for i, (p, x_at) in enumerate(targets_cw_us):
+        target_r_cw = rads_cw.min() + (1 - p/100) * dent_depth_cw_us
+        ax.plot([x_at, peak_deg_cw_us], [target_r_cw, target_r_cw], color=palette[(2+i)%len(palette)], linestyle='--', linewidth=1, label=f'LAX{p}% US-CW')
+
+    ax.set_title("Upstream Circumferential Lengths")
+    ax.set_xlabel("Circumferential Distance (in)")
+    ax.set_ylabel("Radius (in)")
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    fig.tight_layout()
+    fig.savefig(str(file_path).replace('.xlsm', '_US_Circumferential_Lengths.png'), dpi=300)
+    plt.close(fig)
+
+    # --- Circumferential Plot: Downstream Counterclockwise and Clockwise LAX% lines ---
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(circum_ccw.index, circum_ccw.values, label='Counterclockwise', color=palette[0])
+    ax.plot(circum_cw.index, circum_cw.values, label='Clockwise', color=palette[1], linestyle='--')
+
+    # Plot Downstream Counterclockwise LAX% lines
+    for i, (p, x_at) in enumerate(targets_ccw_ds):
+        target_r_ccw = rads_ccw.min() + (1 - p/100) * dent_depth_ccw_ds
+        ax.plot([peak_deg_ccw_ds, x_at], [target_r_ccw, target_r_ccw], color=palette[(2+i)%len(palette)], linestyle='-', linewidth=1, label=f'LAX{p}% DS-CCW')
+
+    # Plot Downstream Clockwise LAX% lines
+    for i, (p, x_at) in enumerate(targets_cw_ds):
+        target_r_cw = rads_cw.min() + (1 - p/100) * dent_depth_cw_ds
+        ax.plot([x_at, peak_deg_cw_ds], [target_r_cw, target_r_cw], color=palette[(2+i)%len(palette)], linestyle='--', linewidth=1, label=f'LAX{p}% DS-CW')
+
+    ax.set_title("Downstream Circumferential Lengths")
+    ax.set_xlabel("Circumferential Distance (in)")
+    ax.set_ylabel("Radius (in)")
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    fig.tight_layout()
+    fig.savefig(str(file_path).replace('.xlsm', '_DS_Circumferential_Lengths.png'), dpi=300)
+    plt.close(fig)

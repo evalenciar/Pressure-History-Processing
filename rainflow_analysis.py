@@ -18,7 +18,7 @@ import math
 import os
 
 templates_path = 'templates/'
-file_name = 'RLA (v1.7.1).xlsm'
+file_name = 'RLA (v1.8.3).xlsm'
 
 # Ignore all UserWarnings from openpyxl
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -31,7 +31,7 @@ plt.ioff()
 # =============================================================================
 
 class DentData:
-    def __init__(self, dent_category, dent_ID, OD, WT, SMYS, MAOP, service_years, M, min_range, Lx, hx, SG, L1, L2, h1, h2, D1, D2, confidence, CPS, interaction_weld, interaction_corrosion, dent_depth_percent, ili_pressure):
+    def __init__(self, dent_category, dent_ID, OD, WT, SMYS, MAOP, service_years, M, min_range, Lx, hx, SG, L1, L2, h1, h2, D1, D2, confidence, CPS, interaction_weld, interaction_corrosion, dent_depth_percent, ili_pressure, restraint_condition, ml_depth_percent, ml_location, orientation, vendor_comments):
         self.dent_category = dent_category
         self.dent_ID = dent_ID
         self.OD = OD
@@ -56,6 +56,11 @@ class DentData:
         self.interaction_corrosion = interaction_corrosion
         self.dent_depth_percent = dent_depth_percent
         self.ili_pressure = ili_pressure
+        self.restraint_condition = restraint_condition
+        self.ml_depth_percent = ml_depth_percent
+        self.ml_location = ml_location
+        self.orientation = orientation
+        self.vendor_comments = vendor_comments
 
 def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycles:bool=False, save_md49:bool=False):
     # Extract the information for the specified dent
@@ -82,7 +87,7 @@ def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycle
     P = Px(Lx, hx, P_list[0], P_list[1], SG, L1, L2, h1, h2, D1, D2)
 
     # Determine the mean pressure as %SMYS where s = PD / (2t) [%]
-    P_mean_smys = 100 * (np.mean(P) * OD / (2 * WT)) / SMYS
+    P_mean_smys = float(100 * (np.average(P) * OD / (2 * WT)) / SMYS)
 
     # Rainflow Analysis using Python package 'rainflow'. Output is in format: Pressure Range [psig], Pressure Mean [psig], Cycle Count, Index Start, Index End
     cycles = pd.DataFrame(rainflow.extract_cycles(P)).to_numpy()
@@ -140,6 +145,9 @@ def create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys):
     interaction_corrosion = dd.interaction_corrosion
     dent_depth_percent = dd.dent_depth_percent
     ili_pressure = dd.ili_pressure
+    restraint_condition = dd.restraint_condition
+    ml_depth_percent = dd.ml_depth_percent
+    ml_location = dd.ml_location
 
     # Defaults:
     start_row = 3
@@ -153,13 +161,15 @@ def create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys):
     wbs = wb['Summary']
     wbs['D4'] = round(OD, 3)
     wbs['D5'] = round(WT, 3)
-    wbs['D6'] = round(SMYS, 0)
+    wbs['D6'] = round(SMYS, -3) # Round to nearest 1000 so we get 70,000
     wbs['D8'] = round(MAOP, 0)
     wbs['D9'] = round(service_years, 3)
-    wbs['D10'] = min_range
+    wbs['D10'] = float(min_range)
 
     wbs['H4'] = str(dent_category)
     wbs['H5'] = str(dent_ID)
+
+    wbs['B72'] = file_name # Use this to keep track of file version
     
     # Import the values in the Rainflow tab (begins on A3)
     wbs = wb['Rainflow']
@@ -174,13 +184,16 @@ def create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys):
         wbs.cell(row=start_row + row_i, column=md49_column).value = float(MD49_bins[row_i])
 
     # Save the P_mean_smys
-    wbs['K61'] = ili_pressure
-    wbs['K63'] = dent_depth_percent
-    wbs['K65'] = P_mean_smys
-    wbs['K67'] = interaction_corrosion
-    wbs['K68'] = interaction_weld
-    wbs['K70'] = confidence
-    wbs['K71'] = CPS
+    wbs['K61'] = float(ili_pressure)
+    wbs['K63'] = float(dent_depth_percent)
+    # wbs['K65'] = P_mean_smys
+    wbs['K67'] = str(interaction_corrosion)
+    wbs['K68'] = float(ml_depth_percent)
+    wbs['K69'] = str(ml_location)
+    wbs['K70'] = str(interaction_weld)
+    wbs['K72'] = float(confidence)
+    wbs['K73'] = str(CPS)
+    wbs['K84'] = str(restraint_condition)
 
     # Save the resultant Excel workbook into the designated folder
     wb.save(filename=os.path.join(results_path, f"{dent_category}_Feature_{dent_ID}_Results.xlsm"))

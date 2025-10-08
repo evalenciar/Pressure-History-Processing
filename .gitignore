@@ -3,6 +3,10 @@
 /Combined Data
 /templates
 /Testing Grounds*
+/Pipe Tally
+/Local
+/__pycache__/
+*.pyc
 
 # Ignore these files
 single_rainflow_analysis_v2.2.py

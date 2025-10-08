@@ -17,28 +17,19 @@ import processing as pro
 overall_start_time = time.time()
 
 categories = ['KS12', 'KS13', 'KS14']
-pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML).xlsx"
-# pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML, Manual).xlsx"
-pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Pump Stations.xlsx"
+pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML, Manual).xlsx"
+# pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Pump Stations.xlsx"
 caliper_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Caliper Radii"
 output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results"
-# output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.02"
-summary_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Summary Figures"
-# summary_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.02\Summary Figures"
+summary_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Summary Figures (Manual)"
 
 df_PT = pd.read_excel(pipe_tally, sheet_name="Sheet1", header=1, engine='calamine')
 
-list_levels = ['Level 0', 'Level 0.5', 'Level 0.5+', 'Level 0.75', 'Level 0.75+', 'Level 1', 'Level 2', 'Level 2 (MD-2-4)']
-list_quadrants = ['US-CCW', 'US-CW', 'DS-CCW', 'DS-CW']
-
-# Add columns to df_PT for Level 0 through Level 2 (MD-2-4) results
-for level in list_levels:
+# Add columns to df_PT for Level 0 through Level 3 results
+for level in ['Level 0', 'Level 0.5', 'Level 0.5+', 'Level 0.75', 'Level 0.75+', 'Level 1', 'Level 2', 'Level 2 (MD-2-4)', 'Level 3']:
     df_PT[f'{level} w/o SF_eff'] = np.nan
     df_PT[f'{level} w/ SF_eff'] = np.nan
 # Add other empty columns for outputs
-for level in list_quadrants:
-    df_PT[f'Quadrant {level}'] = np.nan
-df_PT['Complex Dent'] = np.nan
 df_PT['Fatigue Curve'] = np.nan
 
 def find_matching_radius_file(category, target_feature_id):
@@ -88,11 +79,11 @@ def create_single_contour_plot(df, category, feature_id, OD, orientation, output
     # Create a single contour line plot of the smoothed data
     # Determine the appropriate restraint_value based on matching substring
     # API 1183 6.5.1.1 Girth Weld Interaction for Fatigue (using values in inches)
-    if str(restraint_value) == "Unrestrained":
+    if restraint_value == "Unrestrained":
         a = 0.129
         b = 4.314
         deg = 30
-    elif str(restraint_value) == "Deep Restrained" or str(restraint_value) == "Shallow Restrained" or str(restraint_value) == "Restrained" or "Mixed" in str(restraint_value):
+    elif restraint_value == "Deep Restrained" or restraint_value == "Shallow Restrained" or restraint_value == "Restrained":
         a = 0.418
         b = 3.723
         deg = 40
@@ -152,6 +143,9 @@ def create_smoothed_data_sheet(xlsm_file, df_smoothed, df_feature):
     ws = wb.create_sheet(title="Smoothed Data")
     for r in dataframe_to_rows(df_smoothed, index=True, header=True):
         ws.append(r)
+    # Remove the sheet if it already exists (optional, for clean overwrite)
+    if "Pipe Tally" in wb.sheetnames:
+        wb.remove(wb["Pipe Tally"])
     # Create a new sheet named "Pipe Tally" and save the df_feature data
     ws_tally = wb.create_sheet(title="Pipe Tally")
     if isinstance(df_feature, pd.Series):
@@ -183,14 +177,6 @@ def generate_summary_image(overall_results_path, results_path, dd, df, category)
         # Recalculate all formulas in the workbook
         wb.app.calculate()
 
-        # Wait until Excel finishes calculations, with a limit of 15 minutes
-        start_wait_time = time.time()
-        while time.time() - start_wait_time < (15 * 60):
-            if wb.app.api.CalculationState == xw.constants.CalculationState.xlDone:
-                break
-            print("Waiting for Excel to finish calculations...")
-            time.sleep(1)  # Wait for 1 minute before checking again
-
         # First create the single contour plot using the interaction window criteria
         create_single_contour_plot(df, category, dd.dent_ID, dd.OD, dd.orientation, results_path, wb.sheets['Rainflow'].range('K83').value)
 
@@ -204,10 +190,6 @@ def generate_summary_image(overall_results_path, results_path, dd, df, category)
         # 1. General Info Table
         ax0 = fig.add_subplot(gs[0, 0])
         ax0.axis('off')
-        quadrant_values = [wb.sheets['Rainflow'].range('K79').value,
-            wb.sheets['Rainflow'].range('K80').value,
-            wb.sheets['Rainflow'].range('K81').value,
-            wb.sheets['Rainflow'].range('K82').value]
         data = [
             ["Line", dd.dent_category],
             ["Dent ID", dd.dent_ID],
@@ -219,11 +201,6 @@ def generate_summary_image(overall_results_path, results_path, dd, df, category)
             ["Dent-Weld Interaction", dd.interaction_weld],
             ["Dent-Metal Loss Interaction", dd.interaction_corrosion],
             ["Calculated Restraint", wb.sheets['Rainflow'].range('K83').value],
-            [f'Quadrant {list_quadrants[0]}', round(quadrant_values[0], 1)],
-            [f'Quadrant {list_quadrants[1]}', round(quadrant_values[1], 1)],
-            [f'Quadrant {list_quadrants[2]}', round(quadrant_values[2], 1)],
-            [f'Quadrant {list_quadrants[3]}', round(quadrant_values[3], 1)],
-            ["Complex Dent", dd.vendor_comments]
         ]
         table = ax0.table(cellText=data, loc='center', cellLoc='left')
         # Format the table so first column is dark blue with white text
@@ -235,13 +212,12 @@ def generate_summary_image(overall_results_path, results_path, dd, df, category)
                 cell.set_facecolor('#f0f0f0')  # Light gray for second column
         table.auto_set_font_size(False)
         table.set_fontsize(10)
-        # ax0.set_title("General Information", fontsize=14)
+        ax0.set_title("General Information", fontsize=14)
 
         # 2. Fatigue Results Table
         ax1 = fig.add_subplot(gs[1, 0])
         ax1.axis('off')
         fatigue_data = [
-            # Try to read the values from the excel file, if error occurs, use 'N/A'
             ["Level", 'w/o SF_eff', 'w/ SF_eff'],
             ["Level 0", round(wb.sheets['Summary'].range('C48').value, 1), round(wb.sheets['Summary'].range('D48').value, 1)],
             ["Level 0.5", round(wb.sheets['Summary'].range('C49').value, 1), round(wb.sheets['Summary'].range('D49').value, 1)],
@@ -250,9 +226,8 @@ def generate_summary_image(overall_results_path, results_path, dd, df, category)
             ["Level 0.75+", round(wb.sheets['Summary'].range('C52').value, 1), round(wb.sheets['Summary'].range('D52').value, 1)],
             ["Level 1", round(wb.sheets['Summary'].range('C53').value, 1), round(wb.sheets['Summary'].range('D53').value, 1)],
             ["Level 2", round(wb.sheets['Summary'].range('C54').value, 1), round(wb.sheets['Summary'].range('D54').value, 1)],
-            ["Level 2 (MD-2-4)", 
-            round(wb.sheets['Summary'].range('C55').value, 1) if wb.sheets['Summary'].range('C55').value is not None else 'N/A', 
-            round(wb.sheets['Summary'].range('D55').value, 1) if wb.sheets['Summary'].range('D55').value is not None else 'N/A'],
+            ["Level 2 (MD-2-4)", round(wb.sheets['Summary'].range('C55').value, 1), round(wb.sheets['Summary'].range('D55').value, 1)],
+            ["Level 3", wb.sheets['Summary'].range('C56').value, wb.sheets['Summary'].range('D56').value]
         ]
         table2 = ax1.table(cellText=fatigue_data, loc='center', cellLoc='left')
         # Format the table so first column and first row is dark blue with white text
@@ -275,28 +250,28 @@ def generate_summary_image(overall_results_path, results_path, dd, df, category)
     # ax2.set_title("Pressure History", fontsize=14)
 
     # 4. Smoothed Contour Plot
-    ax3 = fig.add_subplot(gs[0, 1])
+    ax3 = fig.add_subplot(gs[3, 0])
     img2 = mpimg.imread(os.path.join(results_path,f"{dd.dent_category}_Feature_{dd.dent_ID}_Smoothed_Contour.png"))
     ax3.imshow(img2)
     ax3.axis('off')
     # ax3.set_title("Smoothed Contour", fontsize=14)
 
     # 5. Axial Lengths Plot
-    ax4 = fig.add_subplot(gs[1, 1])
+    ax4 = fig.add_subplot(gs[0, 1])
     img3 = mpimg.imread(os.path.join(results_path,f"{dd.dent_category}_Feature_{dd.dent_ID}_Results_Axial_Lengths.png"))
     ax4.imshow(img3)
     ax4.axis('off')
     # ax4.set_title("Axial Lengths", fontsize=14)
 
     # 6. US Circumferential Lengths Plot
-    ax5 = fig.add_subplot(gs[2, 1])
+    ax5 = fig.add_subplot(gs[1, 1])
     img4 = mpimg.imread(os.path.join(results_path,f"{dd.dent_category}_Feature_{dd.dent_ID}_Results_US_Circumferential_Lengths.png"))
     ax5.imshow(img4)
     ax5.axis('off')
     # ax5.set_title("Upstream Circumferential Lengths", fontsize=14)
 
     # 7. DS Circumferential Lengths Plot
-    ax6 = fig.add_subplot(gs[3, 1])
+    ax6 = fig.add_subplot(gs[2, 1])
     img4 = mpimg.imread(os.path.join(results_path,f"{dd.dent_category}_Feature_{dd.dent_ID}_Results_DS_Circumferential_Lengths.png"))
     ax6.imshow(img4)
     ax6.axis('off')
@@ -315,7 +290,7 @@ def generate_summary_image(overall_results_path, results_path, dd, df, category)
                 fatigue_data[i][j] = 0
             elif fatigue_data[i][j] == 'N/A' or fatigue_data[i][j] is None:
                 fatigue_data[i][j] = np.nan
-    return fatigue_data, quadrant_values
+    return fatigue_data
 
 for category in categories:
     print(f"Processing category: {category}")
@@ -324,15 +299,15 @@ for category in categories:
     df_dents = df_category[df_category['Feature Type'] == 'Dent']
 
     # Load the Pump Stations file
-    df_stations = pd.read_excel(pump_stations, sheet_name=category, header=0, engine='calamine')
+    # df_stations = pd.read_excel(pump_stations, sheet_name=category, header=0, engine='calamine')
 
     # Load the pressure history CSV file in folder "Combined Data" based on matching substring
-    pressure_history_path = os.path.join(os.getcwd(), "Combined Data", f"{category}_combined.csv")
+    # pressure_history_path = os.path.join(os.getcwd(), "Combined Data", f"{category}_combined.csv")
     # # Read only the header to get column names, this will be used to give dtype for loading the data
     # column_names = pd.read_csv(pressure_history_path, nrows=0).columns.tolist()
     # dtypes = {col: float for col in column_names[1:]}
     # df_pressure_history = pd.read_csv(pressure_history_path, header=0, dtype=dtypes, parse_dates=[column_names[0]])
-    df_pressure_history = pd.read_csv(pressure_history_path, header=0, low_memory=False)
+    # df_pressure_history = pd.read_csv(pressure_history_path, header=0, low_memory=False)
 
     ####################################################################
     # Perform RLA on each feature of interest
@@ -348,7 +323,6 @@ for category in categories:
     results_folder = f"{category} Results"
     # results_folder = os.path.join(os.getcwd(), results_folder) + '\\'
     results_folder = os.path.join(output_folder, results_folder) + '\\'
-    
     # If the folder already exists, use the existing folder
     if not os.path.isdir(results_folder):
         os.mkdir(results_folder)
@@ -364,25 +338,25 @@ for category in categories:
             abs_dist = dent['AP Measure (m)']
             
             # Find upstream station
-            upstream_candidates = df_stations[df_stations['Continuous Measure (m)'] <= abs_dist]
+            # upstream_candidates = df_stations[df_stations['Continuous Measure (m)'] <= abs_dist]
             
             # Find downstream station
-            downstream_candidates = df_stations[df_stations['Continuous Measure (m)'] >= abs_dist]
+            # downstream_candidates = df_stations[df_stations['Continuous Measure (m)'] >= abs_dist]
 
             # Check if the pressure history contains the required columns
-            if upstream_candidates.empty or downstream_candidates.empty:
-                print(f"Could not find stations for Feature {dent['Feature ID']} at {abs_dist} m.")
-                continue
+            # if upstream_candidates.empty or downstream_candidates.empty:
+            #     print(f"Could not find stations for Feature {dent['Feature ID']} at {abs_dist} m.")
+            #     continue
 
-            upstream_station = upstream_candidates.iloc[-1]
-            downstream_station = downstream_candidates.iloc[0]
-            upstream_tag = upstream_station['Tag Name']
-            downstream_tag = downstream_station['Tag Name']
+            # upstream_station = upstream_candidates.iloc[-1]
+            # downstream_station = downstream_candidates.iloc[0]
+            # upstream_tag = upstream_station['Tag Name']
+            # downstream_tag = downstream_station['Tag Name']
             
-            # Select pressure history data for the upstream and downstream stations, and convert from kPa to psig
-            upstream_pressure = pd.to_numeric(df_pressure_history[upstream_tag], errors='coerce').astype(float).to_numpy() * 0.145038
-            downstream_pressure = pd.to_numeric(df_pressure_history[downstream_tag], errors='coerce').astype(float).to_numpy() * 0.145038
-            time_data = pd.to_datetime(df_pressure_history['Date-Time']).to_numpy()
+            # # Select pressure history data for the upstream and downstream stations, and convert from kPa to psig
+            # upstream_pressure = pd.to_numeric(df_pressure_history[upstream_tag], errors='coerce').astype(float).to_numpy() * 0.145038
+            # downstream_pressure = pd.to_numeric(df_pressure_history[downstream_tag], errors='coerce').astype(float).to_numpy() * 0.145038
+            # time_data = pd.to_datetime(df_pressure_history['Date-Time']).to_numpy()
             
             # Build the dent dict. Convert to Imperial units if necessary.
             dd = rfa.DentData(
@@ -392,16 +366,16 @@ for category in categories:
                 WT = dent['TCPL Nominal Wall Thickness [mm]'] * 0.0393701,  # Convert mm to inch
                 SMYS = dent['TCPL SMYS [MPa]'] * 145.038,  # Convert MPa to psi
                 MAOP = dent['TCPL MOP/MAOP [kPa]'] * 0.145038,  # Convert kPa to psi
-                service_years = (time_data[-1] - time_data[0]) / pd.Timedelta(days=365.25),  # Calculate service years from time data
+                service_years = None,
                 M = 3,  # Assume exponent of M = 3.0
                 min_range = 5,  # Filter at 5psig
                 Lx = dent['AP Measure (m)'] * 3.28084,  # Convert meters to feet
                 hx = dent['Dent Elevation [m]'] * 3.28084,  # Convert meters to feet
                 SG = 0.84, # Assumption from https://www.engineeringtoolbox.com/specific-gravity-liquid-fluids-d_294.html
-                L1 = upstream_station['Continuous Measure (m)'] * 3.28084,  # Convert meters to feet
-                L2 = downstream_station['Continuous Measure (m)'] * 3.28084,  # Convert meters to feet
-                h1 = upstream_station['Elevation'] * 3.28084,  # Convert meters to feet
-                h2 = downstream_station['Elevation'] * 3.28084,  # Convert meters to feet
+                L1 = None,
+                L2 = None,
+                h1 = None,
+                h2 = None,
                 D1 = dent['TCPL NPS'],
                 D2 = dent['TCPL NPS'],
                 confidence = dent['Confidence Level Depth [%]'],
@@ -413,8 +387,7 @@ for category in categories:
                 restraint_condition = dent['Fatigue Screening Assumed Restraint Condition'],
                 ml_depth_percent = dent['Interacting Peak Depth [%]'],
                 ml_location = 'OD' if dent['Interacting Wall Surface'] == 'External' else 'ID' if dent['Interacting Wall Surface'] == 'Internal' else dent['Interacting Wall Surface'],
-                orientation = str(dent['Feature Orientation\r\n[hh:mm]']),
-                vendor_comments = 'TRUE' if dent['ILI Vendor Comments'].lower().__contains__('double') else 'TRUE' if dent['ILI Vendor Comments'].lower().__contains__('multiple') else 'FALSE',
+                orientation = str(dent['Feature Orientation\r\n[hh:mm]'])
             )
             # Determine the results path
             results_path = os.path.join(results_folder, f"Feature {dent['Feature ID']}") + '\\'
@@ -423,22 +396,38 @@ for category in categories:
 
             # Perform RLA for liquids
             # print(f"{count:04d} / {df_dents.shape[0]:04d} ({round(time.time() - start_time)}s): Processing Feature {dent['Feature ID']}...")
-            SSI, CI, MD49_SSI, *_ = rfa.liquid([upstream_pressure, downstream_pressure], time_data, results_path, dd)
-            
-            result_dict = {
-                'Category': category,
-                'Feature ID': dd.dent_ID,
-                'Upstream Station': upstream_tag,
-                'Downstream Station': downstream_tag,
-                'SSI': float(SSI).__round__(2),
-                'CI': float(CI).__round__(2),
-                'MD49_SSI': float(MD49_SSI).__round__(2)
-            }
-            results.append(result_dict)
+            # SSI, CI, MD49_SSI, *_ = rfa.liquid([upstream_pressure, downstream_pressure], time_data, results_path, dd)
 
-            # Save results to notepad after each iteration
-            with open(os.path.join(results_folder, f"01_{category}_RLA_Results.txt"), "a") as f:
-                f.write(f"{result_dict}\n")
+            file_path = os.path.join(results_path, f"{category}_Feature_{dent['Feature ID']}_Results.xlsm")
+            wb = openpyxl.load_workbook(filename=file_path, read_only=False, keep_vba=True)
+
+            wbs = wb['Rainflow']
+            wbs['K67'] = str(dd.interaction_corrosion)
+            wbs['K69'] = str(dd.ml_location)
+            wbs['K70'] = str(dd.interaction_weld)
+            wbs['K72'] = float(dd.confidence)
+            wbs['K73'] = str(dd.CPS)
+            wbs['K84'] = str(dd.restraint_condition)
+
+            # Save the resultant Excel workbook into the designated folder
+            wb.save(filename=file_path)
+            wb.close()
+            
+            # result_dict = {
+            #     'Category': category,
+            #     'Feature ID': dd.dent_ID,
+            #     'Upstream Station': upstream_tag,
+            #     'Downstream Station': downstream_tag,
+            #     'SSI': float(SSI).__round__(2),
+            #     'CI': float(CI).__round__(2),
+            #     'MD49_SSI': float(MD49_SSI).__round__(2)
+            # }
+            # results.append(result_dict)
+
+            # # Save results to notepad after each iteration
+            with open(os.path.join(results_folder, f"{category}_RLA_Results_Manual.txt"), "a") as f:
+                # f.write(f"{result_dict}\n")
+                f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully saved RLA data to file: '{os.path.basename(file_path)}'\n")
 
             # Print or save the results as needed
             print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Finished rainflow analysis.")
@@ -478,7 +467,7 @@ for category in categories:
             print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully saved smoothed data to file: '{os.path.basename(file_path)}'")
 
             # Save results to notepad after each iteration. Keep the notepad in the parent output folder (one directory higher)
-            with open(os.path.join(os.path.dirname(results_folder), f"02_{category}_Smoothing_Results.txt"), "a") as f:
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_Smoothing_Results_Manual.txt"), "a") as f:
                 f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully saved smoothed data to file: '{os.path.basename(file_path)}'\n")
 
         except Exception as e:
@@ -495,78 +484,56 @@ for category in categories:
             api.process_dent_file(file_path, dd.OD, dd.WT)
             print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully processed MD49: '{os.path.basename(file_path)}'")
             # Save results to notepad after each iteration. Keep the notepad in the parent output folder (one directory higher)
-            with open(os.path.join(os.path.dirname(results_folder), f"03_{category}_MD49_Results.txt"), "a") as f:
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_MD49_Results_Manual.txt"), "a") as f:
                 f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully processed MD49: '{os.path.basename(file_path)}'\n")
 
         except Exception as e:
             print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error processing MD49 for file: '{os.path.basename(file_path)}'. Error: {e}")
             print(traceback.format_exc())
-            with open(os.path.join(os.path.dirname(results_folder), f"03_{category}_MD49_Results.txt"), "a") as f:
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_MD49_Results_Manual.txt"), "a") as f:
                 f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error processing MD49 for file: '{os.path.basename(file_path)}'. Error: {e}\n")
                 f.write(traceback.format_exc() + "\n")
 
         # Generate the summary image
         try:
-            fatigue_data, quadrant_values = generate_summary_image(summary_folder, results_path, dd, df, category)
+            fatigue_data = generate_summary_image(summary_folder, results_path, dd, df, category)
             print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully generated summary image.")
             # Save results to notepad after each iteration. Keep the notepad in the parent output folder (one directory higher)
-            with open(os.path.join(os.path.dirname(results_folder), f"04_{category}_Summary_Image.txt"), "a") as f:
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_Summary_Image.txt"), "a") as f:
                 f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully generated summary image: '{os.path.basename(file_path)}'\n")
         except Exception as e:
             print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error generating summary image: {e}")
             print(traceback.format_exc())
-            with open(os.path.join(os.path.dirname(results_folder), f"04_{category}_Summary_Image.txt"), "a") as f:
+            with open(os.path.join(os.path.dirname(results_folder), f"{category}_Summary_Image.txt"), "a") as f:
                 f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error generating summary image: {e}\n")
                 f.write(traceback.format_exc() + "\n")
 
         # Update df_PT with the results for the current feature
-        try:
+        for level, row in zip(
+            ['Level 0', 'Level 0.5', 'Level 0.5+', 'Level 0.75', 'Level 0.75+', 'Level 1', 'Level 2', 'Level 2 (MD-2-4)', 'Level 3'],
+            fatigue_data
+        ):
+            # Locate based on Feature ID, Section = Category, and Feature Type = 'Dent'
+            df_PT.loc[(df_PT['Feature ID'] == dd.dent_ID) & (df_PT['Section'].astype(str).str.contains(category, case=False, na=False)) & (df_PT['Feature Type'] == 'Dent'), f'{level} w/o SF_eff'] = row[1]
+            df_PT.loc[(df_PT['Feature ID'] == dd.dent_ID) & (df_PT['Section'].astype(str).str.contains(category, case=False, na=False)) & (df_PT['Feature Type'] == 'Dent'), f'{level} w/ SF_eff'] = row[2]
+
+        # Write the results to a .txt file after each iteration
+        with open(os.path.join(output_folder, f"All_Fatigue_Results.txt"), "a") as f:
+            f.write(f"{category} Feature {dent['Feature ID']}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s)\n")
             for level, row in zip(
-                list_levels,
+                ['Level 0', 'Level 0.5', 'Level 0.5+', 'Level 0.75', 'Level 0.75+', 'Level 1', 'Level 2', 'Level 2 (MD-2-4)', 'Level 3'],
                 fatigue_data
             ):
-                # Locate based on Feature ID, Section = Category, and Feature Type = 'Dent'
-                df_PT.loc[(df_PT['Feature ID'] == dd.dent_ID) & (df_PT['Section'].astype(str).str.contains(category, case=False, na=False)) & (df_PT['Feature Type'] == 'Dent'), f'{level} w/o SF_eff'] = row[1]
-                df_PT.loc[(df_PT['Feature ID'] == dd.dent_ID) & (df_PT['Section'].astype(str).str.contains(category, case=False, na=False)) & (df_PT['Feature Type'] == 'Dent'), f'{level} w/ SF_eff'] = row[2]
+                f.write(f"  {level}: w/o SF_eff = {row[1]}, w/ SF_eff = {row[2]}\n")
+            f.write("\n")
 
-            # Update df_PT with the quadrant results and fatigue curve
-            for i, value in enumerate(quadrant_values):
-                df_PT.loc[(df_PT['Feature ID'] == dd.dent_ID) & (df_PT['Section'].astype(str).str.contains(category, case=False, na=False)) & (df_PT['Feature Type'] == 'Dent'), f'Quadrant {list_quadrants[i]}'] = value
-
-            # Update the Complex Dent column based on vendor comments
-            df_PT.loc[(df_PT['Feature ID'] == dd.dent_ID) & (df_PT['Section'].astype(str).str.contains(category, case=False, na=False)) & (df_PT['Feature Type'] == 'Dent'), 'Complex Dent'] = dd.vendor_comments
-
-            # Write the results to a .txt file after each iteration
-            with open(os.path.join(output_folder, f"All_Fatigue_Results.txt"), "a") as f:
-                f.write(f"{category} Feature {dent['Feature ID']}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s)\n")
-                for level, row in zip(
-                    list_levels,
-                    fatigue_data
-                ):
-                    f.write(f"  {level}: w/o SF_eff = {row[1]}, w/ SF_eff = {row[2]}\n")
-                for i, value in enumerate(quadrant_values):
-                    f.write(f"  Quadrant {list_quadrants[i]}: {value}\n")
-                f.write("\n")
-
-            # Attempt to save the updated df_PT to an Excel file after each iteration
-            live_excel_path = os.path.join(output_folder, "Updated_Pipe_Tally_Live (Please Close Me).xlsx")
-            try:
-                df_PT.to_excel(live_excel_path, index=False)
-                print(f"Live update saved to {live_excel_path}")
-            except Exception as e:
-                print(f"Could not save live update to {live_excel_path}: {e}")
-
-            print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully updated df_PT with results.")
-            # Save results to notepad after each iteration. Keep the notepad in the parent output folder (one directory higher)
-            with open(os.path.join(os.path.dirname(results_folder), f"05_{category}_Update_Pipe_Tally.txt"), "a") as f:
-                f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Successfully updated df_PT with results.\n")
-
+        # Attempt to save the updated df_PT to an Excel file after each iteration
+        live_excel_path = os.path.join(output_folder, "Updated_Pipe_Tally_Live (Please Close Me).xlsx")
+        try:
+            df_PT.to_excel(live_excel_path, index=False)
+            print(f"Live update saved to {live_excel_path}")
         except Exception as e:
-            print(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error updating df_PT with results: {e}")
-            print(traceback.format_exc())
-            with open(os.path.join(os.path.dirname(results_folder), f"05_{category}_Update_Pipe_Tally.txt"), "a") as f:
-                f.write(f"{category} Feature {dd.dent_ID}: ({round(time.time() - start_time)}s/{round(time.time() - overall_start_time)}s) Error updating df_PT with results: {e}\n")
-                f.write(traceback.format_exc() + "\n")
+            print(f"Could not save live update to {live_excel_path}: {e}")
 
     # Save the df_results DataFrame to an Excel file
     df_results = pd.DataFrame(results)
