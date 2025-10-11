@@ -100,7 +100,7 @@ def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycle
     CI = equivalent_cycles('ci', cycles, OD, WT, SMYS, service_years, M, min_range)
     MD49_SSI, MD49_bins = MD49(cycles, OD, WT, SMYS, service_years, M, min_range)
 
-    create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys)
+    # create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys)
 
     if save_history:
         df_P = pd.DataFrame(data=P, columns=['Pressure (psig)'], index=P_time)
@@ -124,6 +124,7 @@ def liquid_graphing(dent_ID, results_path, P, P_time, dent_category:str = ''):
     fig, sp = plt.subplots(figsize=(8,4), dpi=240)
     fig.suptitle(f'Pressure History for {dent_category} Feature {dent_ID}', fontsize=16)
     sp.scatter(P_time, P, s=0.1)
+    sp.grid(color='lightgray', alpha=0.5, zorder=1)
     sp.set_ylim([0, max(1750, math.ceil(np.nanmax(P) / 250) * 250)]) # Set y-axis limit to a maximum of 2000 or the next multiple of 250 above the max pressure
     sp.set_ylabel('Interpolated Pressure (psig)')
     sp.set_xlabel('Date Time')

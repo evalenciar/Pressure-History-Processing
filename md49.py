@@ -3,7 +3,6 @@ Determine and evaluate the dent profile using the MD-49 method.
 Standard Reference: API 1183 Section 6.2 Dent Geometry Profile Characterization
 """
 
-from pathlib import Path
 import numpy as np
 import pandas as pd
 import math
@@ -202,6 +201,35 @@ def _find_deflection_initiation(data: np.ndarray, nominal_radius: float, window_
 
     return start_idx, start_val
 
+def get_restraint_parameter(AAX_15: float, ATR_15: float, LTR_70: float, LAX_15: float, LAX_30: float, LAX_50: float, LTR_80: float) -> float:
+    """
+    Calculate the Restraint Parameter (RP) based on the characteristic lengths and areas for the dent quadrant.
+
+    Parameters
+    ----------
+    AAX_15 : float
+        Axial Area at 15% dent depth.
+    ATR_15 : float
+        Circumferential Area at 15% dent depth.
+    LTR_70 : float
+        Circumferential Length at 70% dent depth.
+    LAX_15 : float
+        Axial Length at 15% dent depth.
+    LAX_30 : float
+        Axial Length at 30% dent depth.
+    LAX_50 : float
+        Axial Length at 50% dent depth.
+    LTR_80 : float
+        Circumferential Length at 80% dent depth.
+
+    Returns
+    -------
+    rp : float
+        The calculated Restraint Parameter score.
+    """
+    rp = max(18 * abs(AAX_15 - ATR_15) ** (1/2) / LTR_70, 8 * (LAX_15 / LAX_30) ** (1/4) * ((LAX_30 - LAX_50) / LTR_80) ** (1/2))
+    return rp
+
 class CreateProfiles:
     def __init__(self, 
                  df: pd.DataFrame, 
@@ -331,6 +359,54 @@ class CreateProfiles:
     def baseline_ds_cw(self) -> tuple[int, float]:
         """Baseline radius clockwise of the deepest point."""
         return self._baseline_ds_cw
+    @property
+    def US_LAX(self) -> list[float]:
+        """US Axial Lengths for all percentages."""
+        return list(self._results_axial_us["lengths"])
+    @property
+    def US_AAX(self) -> list[float]:
+        """US Axial Areas for all percentages."""
+        return list(self._results_axial_us["areas"])
+    @property
+    def DS_LAX(self) -> list[float]:
+        """DS Axial Lengths for all percentages."""
+        return list(self._results_axial_ds["lengths"])
+    @property
+    def DS_AAX(self) -> list[float]:
+        """DS Axial Areas for all percentages."""
+        return list(self._results_axial_ds["areas"])
+    @property
+    def US_CCW_LTR(self) -> list[float]:
+        """US Circumferential CCW Lengths for all percentages."""
+        return list(self._results_circ_us_ccw["lengths"])
+    @property
+    def US_CCW_ATR(self) -> list[float]:
+        """US Circumferential CCW Areas for all percentages."""
+        return list(self._results_circ_us_ccw["areas"])
+    @property
+    def US_CW_LTR(self) -> list[float]:
+        """US Circumferential CW Lengths for all percentages."""
+        return list(self._results_circ_us_cw["lengths"])
+    @property
+    def US_CW_ATR(self) -> list[float]:
+        """US Circumferential CW Areas for all percentages."""
+        return list(self._results_circ_us_cw["areas"])
+    @property
+    def DS_CCW_LTR(self) -> list[float]:
+        """DS Circumferential CCW Lengths for all percentages."""
+        return list(self._results_circ_ds_ccw["lengths"])
+    @property
+    def DS_CCW_ATR(self) -> list[float]:
+        """DS Circumferential CCW Areas for all percentages."""
+        return list(self._results_circ_ds_ccw["areas"])
+    @property
+    def DS_CW_LTR(self) -> list[float]:
+        """DS Circumferential CW Lengths for all percentages."""
+        return list(self._results_circ_ds_cw["lengths"])
+    @property
+    def DS_CW_ATR(self) -> list[float]:
+        """DS Circumferential CW Areas for all percentages."""
+        return list(self._results_circ_ds_cw["areas"])
 
     def get_nominal(self, expected_nominal: float, threshold: float = 0.05, ignore_edge: float = 0.1) -> float:
         """
@@ -579,3 +655,10 @@ class CreateProfiles:
                 cum_areas[pct] = sum(area for _, area in areas[:idx_at_pct + 1]) if idx_at_pct is not None else None
 
         return {"lengths": lengths, "areas": cum_areas}
+    
+    def create_figure(self):
+        """
+        Create a matplotlib figure showing the dent profile and the lengths plotted at each percentage.
+        Use the indicated baseline for the profile and dent profile segment.
+        """
+        
