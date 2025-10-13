@@ -1285,8 +1285,8 @@ def get_scale_factor_l2(restraint: str, certainty: float, safety_factor: float,
 
         for row in table:
             if (row["Interaction"] == criteria and 
-                ((math.isnan(row["OD_ID"]) and math.isnan(metal_loss_location)) or (row["OD_ID"] == metal_loss_location)) and
-                ((math.isnan(row["Reduction_Factor"]) and math.isnan(weld_interaction_sf)) or (row["Reduction_Factor"] == weld_interaction_sf)) and
+                ((pd.isna(row["OD_ID"]) and pd.isna(metal_loss_location)) or (row["OD_ID"] == metal_loss_location)) and
+                ((pd.isna(row["Reduction_Factor"]) and pd.isna(weld_interaction_sf)) or (row["Reduction_Factor"] == weld_interaction_sf)) and
                 row["Restraint"] == restraint and
                 row["Safety_Factor"] == safety_factor and
                 row["Certainty"] == certainty):
@@ -1650,7 +1650,7 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         # Calculate scale and safety factors
         cps_sf = 4.0 if dd.CPS else 2.0
         weld_sf = 10.0 if dd.interaction_weld == True else 5.0
-        if not math.isnan(dd.ml_depth_percent):
+        if not pd.isna(dd.ml_depth_percent):
             ml_rf = dd.WT/(dd.WT - (dd.ml_depth_percent/100)*dd.WT)
         else:
             ml_rf = 1.0

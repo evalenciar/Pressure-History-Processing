@@ -5,13 +5,12 @@ import md_processing as mdp
 import md49
 import rainflow_analysis as rfa
 
-file_path = r"C:\Users\emman\Documents\SoftDev\Pressure History Processing\Validation\Level 2 MD24 Validation Data.xlsx"
+file_path = r"C:\Users\emman\Documents\SoftDev\Pressure History Processing\Validation\MD53 Validation Data.xlsx"
 
 # Load the Excel file. Pipe information is in Pipe sheet. Cycles information is in Cycles sheet. And Profiles are in Profiles sheet.
 xls = pd.ExcelFile(file_path)
 pipe_df = pd.read_excel(xls, 'Pipe')
 cycles_df = pd.read_excel(xls, 'Cycles', header=None)
-rainflow_df = pd.read_excel(xls, 'Rainflow', header=None)
 # profiles_df = pd.read_excel(xls, 'Profiles', index_col=0)
 
 # Create a MD49 instance for processing
@@ -34,8 +33,8 @@ pf._results_circ_ds_cw = {"lengths": {key: {"length": val, "other": np.nan} for 
 dd = rfa.DentData(
     dent_category = "TEST",
     dent_ID = "TEST ID",
-    OD = 20,
-    WT = 0.281,
+    OD = 32,
+    WT = 0.312,
     SMYS = 52000,
     MAOP = 0,
     service_years = 1.0,
@@ -52,19 +51,20 @@ dd = rfa.DentData(
     D2 = 0,
     confidence = 80,
     CPS = True,
-    interaction_weld = True,
-    interaction_corrosion = True,
-    dent_depth_percent = 1.280,
-    ili_pressure = 789,
-    restraint_condition = "Unrestrained",
+    interaction_weld = False,
+    interaction_corrosion = False,
+    dent_depth_percent = 2.594,
+    ili_pressure = 388,
+    restraint_condition = "Restrained",
     ml_depth_percent = 0,
     ml_location = "OD",
     orientation = "Orientation",
     vendor_comments = "FALSE"
 )
-curve_selection = {"Category": "BS", "Curve": "D", "SD": 1}
-md49_results = mdp.process(dd, pf, (7783.80608, 0, 0, rainflow_df.values, cycles_df.values), curve_selection, False)
+curve_selection = {"Category": "BS", "Curve": "D", "SD": 0}
+cycles = np.array([[3,55,1,3],[4,5,3,4],[5,15,4,5],[15,55,5,15]])
+md49_results = mdp.process(dd, pf, (462, 0, 0, cycles, cycles_df.values), curve_selection, False)
 print(md49_results)
 # Save the results to a txt file
-with open("Level 2 MD24 Validation Results.txt", "w") as f:
+with open("MD53 Validation Results.txt", "w") as f:
     f.write(str(md49_results))

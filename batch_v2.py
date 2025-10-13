@@ -380,7 +380,7 @@ for category in categories:
                 ml_depth_percent = dent['Interacting Peak Depth [%]'],
                 ml_location = 'OD' if dent['Interacting Wall Surface'] == 'External' else 'ID' if dent['Interacting Wall Surface'] == 'Internal' else "",
                 orientation = str(dent['Feature Orientation\r\n[hh:mm]']),
-                vendor_comments = 'TRUE' if dent['ILI Vendor Comments'].lower().__contains__('double') else 'TRUE' if dent['ILI Vendor Comments'].lower().__contains__('multiple') else 'FALSE',
+                vendor_comments = 'TRUE' if str(dent['ILI Vendor Comments']).lower().__contains__('double') else 'TRUE' if str(dent['ILI Vendor Comments']).lower().__contains__('multiple') else 'FALSE',
             )
             # Determine the results path
             results_path = os.path.join(results_folder, f"Feature {dent['Feature ID']}") + '\\'
