@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import math
 from scipy.signal import savgol_filter
+import matplotlib.pyplot as plt
 
 def find_deflection(data: pd.Series, nominal_radius: float, window_size: int = 11, slope_tolerance: float = 0.003, closeness_percentage: float = 5, buffer_offset: int = 5, min_consecutive_deviations: int = 3, circumferential_mode: bool = False, outbound_data: bool = False) -> tuple[int | None, float | None]:
     """
@@ -232,14 +233,37 @@ def get_restraint_parameter(AAX_15: float, ATR_15: float, LTR_70: float, LAX_15:
 
 class CreateProfiles:
     def __init__(self, 
-                 df: pd.DataFrame, 
-                 OD: float, 
-                 WT: float, 
+                 df: pd.DataFrame = None, 
+                 OD: float = None, 
+                 WT: float = None, 
                  ignore_edge: float = 0.1,
                  percentages_axial: list = [95, 90, 85, 75, 60, 50, 40, 30, 20, 15, 10, 5],
                  percentages_circ: list = [90, 85, 80, 75, 70, 60, 50, 40, 30, 20, 15, 10],
                  percentages_area: list = [85, 75, 60, 50, 40, 30, 20, 15, 10],
+                 process_data: bool = True,
+                 file_path: str = None
                  ):
+        """
+        Initialize the CreateProfiles class.
+        """
+        self._results_axial_us = None
+        self._results_axial_ds = None
+        self._results_circ_us_ccw = None
+        self._results_circ_us_cw = None
+        self._results_circ_ds_ccw = None
+        self._results_circ_ds_cw = None
+        if process_data:
+            self._process_data(df, OD, WT, ignore_edge, percentages_axial, percentages_circ, percentages_area, file_path)
+
+    def _process_data(self, 
+                      df: pd.DataFrame, 
+                      OD: float, 
+                      WT: float, 
+                      ignore_edge: float,
+                      percentages_axial: list,
+                      percentages_circ: list,
+                      percentages_area: list, 
+                      file_path: str = None):
         """
         Class to handle dent profile data and compute key metrics.
         Parameters
@@ -290,6 +314,10 @@ class CreateProfiles:
         self._results_circ_us_cw = self.get_measurements(self._circ_cw, self._dent_depth_us_cw, self._circ_min, self._baseline_us_cw, percentages_circ, percentages_area, outbound_data=True)
         self._results_circ_ds_ccw = self.get_measurements(self._circ_ccw, self._dent_depth_ds_ccw, self._circ_min, self._baseline_ds_ccw, percentages_circ, percentages_area)
         self._results_circ_ds_cw = self.get_measurements(self._circ_cw, self._dent_depth_ds_cw, self._circ_min, self._baseline_ds_cw, percentages_circ, percentages_area, outbound_data=True)
+        # Create three figures
+        self.create_figure("Axial", self._axial_us, self._axial_ds, self._results_axial_us, self._results_axial_ds, self._axial_min, file_path)
+        self.create_figure("Circ_US", self._circ_ccw, self._circ_cw, self._results_circ_us_ccw, self._results_circ_us_cw, self._circ_min, file_path)
+        self.create_figure("Circ_DS", self._circ_ccw, self._circ_cw, self._results_circ_ds_ccw, self._results_circ_ds_cw, self._circ_min, file_path)
 
     @property
     def df(self) -> pd.DataFrame:
@@ -362,51 +390,63 @@ class CreateProfiles:
     @property
     def US_LAX(self) -> list[float]:
         """US Axial Lengths for all percentages."""
-        return list(self._results_axial_us["lengths"])
+        temp_dict = self._results_axial_us["lengths"]
+        output_list = [val["length"] for val in temp_dict.values()]
+        return output_list
     @property
     def US_AAX(self) -> list[float]:
         """US Axial Areas for all percentages."""
-        return list(self._results_axial_us["areas"])
+        return list(self._results_axial_us["areas"].values())
     @property
     def DS_LAX(self) -> list[float]:
         """DS Axial Lengths for all percentages."""
-        return list(self._results_axial_ds["lengths"])
+        temp_dict = self._results_axial_ds["lengths"]
+        output_list = [val["length"] for val in temp_dict.values()]
+        return output_list
     @property
     def DS_AAX(self) -> list[float]:
         """DS Axial Areas for all percentages."""
-        return list(self._results_axial_ds["areas"])
+        return list(self._results_axial_ds["areas"].values())
     @property
     def US_CCW_LTR(self) -> list[float]:
         """US Circumferential CCW Lengths for all percentages."""
-        return list(self._results_circ_us_ccw["lengths"])
+        temp_dict = self._results_circ_us_ccw["lengths"]
+        output_list = [val["length"] for val in temp_dict.values()]
+        return output_list
     @property
     def US_CCW_ATR(self) -> list[float]:
         """US Circumferential CCW Areas for all percentages."""
-        return list(self._results_circ_us_ccw["areas"])
+        return list(self._results_circ_us_ccw["areas"].values())
     @property
     def US_CW_LTR(self) -> list[float]:
         """US Circumferential CW Lengths for all percentages."""
-        return list(self._results_circ_us_cw["lengths"])
+        temp_dict = self._results_circ_us_cw["lengths"]
+        output_list = [val["length"] for val in temp_dict.values()]
+        return output_list
     @property
     def US_CW_ATR(self) -> list[float]:
         """US Circumferential CW Areas for all percentages."""
-        return list(self._results_circ_us_cw["areas"])
+        return list(self._results_circ_us_cw["areas"].values())
     @property
     def DS_CCW_LTR(self) -> list[float]:
         """DS Circumferential CCW Lengths for all percentages."""
-        return list(self._results_circ_ds_ccw["lengths"])
+        temp_dict = self._results_circ_ds_ccw["lengths"]
+        output_list = [val["length"] for val in temp_dict.values()]
+        return output_list
     @property
     def DS_CCW_ATR(self) -> list[float]:
         """DS Circumferential CCW Areas for all percentages."""
-        return list(self._results_circ_ds_ccw["areas"])
+        return list(self._results_circ_ds_ccw["areas"].values())
     @property
     def DS_CW_LTR(self) -> list[float]:
         """DS Circumferential CW Lengths for all percentages."""
-        return list(self._results_circ_ds_cw["lengths"])
+        temp_dict = self._results_circ_ds_cw["lengths"]
+        output_list = [val["length"] for val in temp_dict.values()]
+        return output_list
     @property
     def DS_CW_ATR(self) -> list[float]:
         """DS Circumferential CW Areas for all percentages."""
-        return list(self._results_circ_ds_cw["areas"])
+        return list(self._results_circ_ds_cw["areas"].values())
 
     def get_nominal(self, expected_nominal: float, threshold: float = 0.05, ignore_edge: float = 0.1) -> float:
         """
@@ -605,20 +645,20 @@ class CreateProfiles:
             if crossing_idx is None or crossing_idx == data.index[0]:
                 # If no crossing found or crossing is at the start, use the default length
                 length = None
-                interp_axial = None
+                interp_position = None
             else:
                 # Linear interpolation to find the exact crossing point
                 x0, x1 = data.index[data.index.get_loc(crossing_idx) - 1], crossing_idx
                 y0, y1 = data.loc[x0], data.loc[x1]
                 if y1 != y0:
-                    interp_axial = x0 + (target_radius - y0) * (x1 - x0) / (y1 - y0)
+                    interp_position = x0 + (target_radius - y0) * (x1 - x0) / (y1 - y0)
                 else:
-                    interp_axial = x1  # If y1 == y0, just take the crossing index
+                    interp_position = x1  # If y1 == y0, just take the crossing index
 
                 # Calculate length from the minimum index to the interpolated index
-                length = abs(interp_axial - dent_location)
+                length = abs(interp_position - dent_location)
             # Store the length
-            lengths[pct] = {"length": length, "axial": interp_axial, "radius": target_radius}
+            lengths[pct] = {"length": length, "position": interp_position, "radius": target_radius}
 
         # Calculate areas using the trapezoidal rule for ALL data points starting from the minimum to the baseline
         areas = []
@@ -645,8 +685,8 @@ class CreateProfiles:
         # Calculate the cumulative area
         cum_areas = {}
         for pct in percentages_area:
-            # Use a generator expression to find the value of v["axial"] in the lengths.items() list where the percentage (k) matches the given value pct
-            axial_at_pct = next((v["axial"] for k, v in lengths.items() if k == pct), None)
+            # Use a generator expression to find the value of v["position"] in the lengths.items() list where the percentage (k) matches the given value pct
+            axial_at_pct = next((v["position"] for k, v in lengths.items() if k == pct), None)
             idx_at_pct = min(range(len(areas)), key=lambda i: abs(areas[i][0] - axial_at_pct)) if axial_at_pct is not None else None
             # Store the cumulative area from the minimum to the length point
             if not outbound_data:
@@ -655,10 +695,66 @@ class CreateProfiles:
                 cum_areas[pct] = sum(area for _, area in areas[:idx_at_pct + 1]) if idx_at_pct is not None else None
 
         return {"lengths": lengths, "areas": cum_areas}
-    
-    def create_figure(self):
+
+    def create_figure(self, quadrant: str, profile_us: pd.Series, profile_ds: pd.Series, results_us: dict, results_ds: dict, dent_location: float, file_path: str, palette: list = [
+            '#1f77b4',  # muted blue
+            '#ff7f0e',  # safety orange
+            '#2ca02c',  # cooked asparagus green
+            '#d62728',  # brick red
+            '#9467bd',  # muted purple
+            '#8c564b',  # chestnut brown
+            '#e377c2',  # raspberry yogurt pink
+            '#7f7f7f',  # middle gray
+            '#bcbd22',  # curry yellow‑green
+            '#17becf',  # blue‑teal
+            '#aec7e8',  # light pastel blue
+            '#ffbb78'   # light pastel orange
+        ]):
         """
         Create a matplotlib figure showing the dent profile and the lengths plotted at each percentage.
         Use the indicated baseline for the profile and dent profile segment.
         """
+        # Check the corresponding quadrant for custom text labels
+        if quadrant.lower() == "axial":
+            title = "Axial Lengths"
+            xlabel = "Axial Distance (in)"
+            ylabel = "Radius (in)"
+            us_label = "Upstream"
+            ds_label = "Downstream"
+            data_label = "LAX"
+            data_label2 = ["US","DS"]
+        if quadrant.lower() == "circ_us":
+            title = "Upstream Circumferential Lengths"
+            xlabel = "Circumferential Distance (deg)"
+            ylabel = "Radius (in)"
+            us_label = "Counterclockwise"
+            ds_label = "Clockwise"
+            data_label = "LTR"
+            data_label2 = ["US-CCW","DS-CW"]
+        if quadrant.lower() == "circ_ds":
+            title = "Downstream Circumferential Lengths"
+            xlabel = "Circumferential Distance (deg)"
+            ylabel = "Radius (in)"
+            us_label = "Counterclockwise"
+            ds_label = "Clockwise"
+            data_label = "LTR"
+            data_label2 = ["US-CCW","DS-CW"]
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.plot(profile_us.index, profile_us, label=us_label, color=palette[0])
+        ax.plot(profile_ds.index, profile_ds, label=ds_label, color=palette[1], linestyle='--')
+
+        for i, (p, vals) in enumerate(results_us["lengths"].items()):
+            ax.plot([vals["position"], dent_location], [vals["radius"], vals["radius"]], color=palette[(2+i)%len(palette)], linestyle='-', linewidth=1, label=f'{data_label}{p}% {data_label2[0]}')
+
+        for i, (p, vals) in enumerate(results_ds["lengths"].items()):
+            ax.plot([dent_location, vals["position"]], [vals["radius"], vals["radius"]], color=palette[(2+i)%len(palette)], linestyle='--', linewidth=1, label=f'{data_label}{p}% {data_label2[1]}')
+
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+        fig.tight_layout()
+        fig.savefig(str(file_path).replace('.xlsx', f'_{quadrant}_Lengths.png'), dpi=300)
+        plt.close(fig)
         

@@ -245,7 +245,8 @@
     "A.7": [
         {
             "Restraint": "Restrained",
-            "ODot": "24 to 60",
+            "ODot_LB": 24,
+            "ODot_UB": 60,
             "b1": 2.7457,
             "b2": -1.4101,
             "b3": -2.5737,
@@ -269,7 +270,8 @@
         },
         {
             "Restraint": "Restrained",
-            "ODot": "60 to 130",
+            "ODot_LB": 60,
+            "ODot_UB": 130,
             "b1": 7.7559,
             "b2": -6.909,
             "b3": -2.5054,
@@ -293,7 +295,8 @@
         },
         {
             "Restraint": "Unrestrained",
-            "ODot": "24 to 60",
+            "ODot_LB": 24,
+            "ODot_UB": 60,
             "b1": 3.7362,
             "b2": -0.37548,
             "b3": -0.75254,
@@ -317,7 +320,8 @@
         },
         {
             "Restraint": "Unrestrained",
-            "ODot": "60 to 130",
+            "ODot_LB": 60,
+            "ODot_UB": 130,
             "b1": 6.6447,
             "b2": -2.7845,
             "b3": -5.4475,

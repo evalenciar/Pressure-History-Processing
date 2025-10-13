@@ -12,6 +12,7 @@ import pandas as pd
 
 import rainflow_analysis as rfa
 import md49
+import traceback
 
 tables_folder = r"C:\Users\emman\Documents\SoftDev\Pressure History Processing\Coefficient Tables"
 rla_template = r"C:\Users\emman\Documents\SoftDev\Pressure History Processing\templates\RLA (v1.8.3) Display Only.xlsx"
@@ -259,6 +260,8 @@ def get_a9(OD: float, t: float, dP: float, depth: float, restraint_condition: st
         d = depth
 
         # Determine which row to use based on restraint condition and OD/t ratio
+        # Restraint Condition can be either "Restrained" or "Unrestrained"
+        restraint_condition = "Unrestrained" if "unrestrained" in restraint_condition.lower() else "Restrained"
         restraint_condition = restraint_condition.strip().title()
         
         # Find the matching row
@@ -342,6 +345,8 @@ def get_a10(od: float, t: float, dp: float, pmean: float, depth: float, restrain
         d = depth
 
         # Determine which row to use based on restraint condition and OD/t ratio
+        # Restraint Condition can be either "Restrained" or "Unrestrained"
+        restraint_condition = "Unrestrained" if "unrestrained" in restraint_condition.lower() else "Restrained"
         restraint_condition = restraint_condition.strip().title()
         
         # Find the matching row
@@ -478,7 +483,7 @@ def get_a16(od: float, t: float, pmean: float, pmax: float, pmin: float, pili: f
         else:
             sp = (r * xl + (1 - r) * xh) * gsf * (od / t) ** 0.25
         
-        # Get coefficients A and B from Table A.8 (merged get_coef_ab functionality)
+        # Get coefficients A and B from Table A.8
         table_a8 = data["A.8"]
         
         a = b = None
@@ -489,7 +494,7 @@ def get_a16(od: float, t: float, pmean: float, pmax: float, pmin: float, pili: f
                 a = row["log10A"]
                 b = row["B"]
                 break
-        
+
         if a is None or b is None:
             return "Out of Range"
         
@@ -630,7 +635,7 @@ def get_a16_min_l1(restraint_condition: str, od: float, t: float, closest_pmean:
             pmax = 80
         else:
             return "Error: Invalid ClosestPMean value"
-
+        
         # Call get_a16_min with the determined pressure values
         return get_a16_min(restraint_condition, od, t, closest_pmean, pmax, pmin, pili, smys,
                           us_lax_values, us_aax_values, ds_lax_values, ds_aax_values,
@@ -647,6 +652,7 @@ def get_n_l1(restraint_condition: str, od: float, t: float, closest_pmean: float
             dscw_atr_values: list) -> float | str:
     """
     Returns the minimum Cycles to Failure for Level 1
+    Note: SMYS is in units of ksi
     """
     try:
         # Check for empty or invalid restraint condition
@@ -726,12 +732,12 @@ def get_md24_unbinned(OD: float, WT: float, SMYS: float, dent_type: str,
         if OD == 0 or WT == 0 or SMYS == 0:
             return "Check WT and/or SMYS."
         
-        if not rainflow_data or len(rainflow_data) == 0:
+        if len(rainflow_data) == 0:
             return "No rainflow data provided."
         
-        if len(km_params) != 25:
-            return "KM parameters list must contain exactly 25 values."
-        
+        if len(km_params) != 24:
+            return "KM parameters list must contain exactly 24 values."
+
         # Load fatigue curve parameters from JSON
         with open(fatigue_curves_path, 'r') as f:
             fatigue_curves = json.load(f)
@@ -860,6 +866,7 @@ def get_md24_unbinned(OD: float, WT: float, SMYS: float, dent_type: str,
         return damage_results
         
     except Exception as e:
+        traceback.print_exc()
         return f"Error in calculation: {str(e)}"
     
 def get_km(od: float, wt: float, restraint_condition: str, 
@@ -1209,12 +1216,16 @@ def get_scale_factor_md53(certainty: float, safety_factor: float, criteria: str,
         sf = None
         # Search through D.1_6 table for matching values
         # If Criteria is "Multiple", treat it as "Corrosion"
-        if criteria.strip().lower() == "multiple":
+        if criteria.strip().lower() == "multiple" or criteria.strip().lower() == "metal loss" or criteria.strip().lower() == "corrosion":
             criteria = "Corrosion"
 
         # Make sure that Certainty is a decimal value (e.g., 0.9, 0.8, 0.7)
         if certainty > 1.0:
             certainty = certainty / 100.0
+
+        # If level is "1", treat it as "2"
+        if level == "1":
+            level = "2"
 
         for row in table:
             if (str(row["Level"]) == level and 
@@ -1241,17 +1252,29 @@ def get_scale_factor_l2(restraint: str, certainty: float, safety_factor: float,
     with open(tables_path, 'r') as f:
         data = json.load(f)
     try:
-        table = data["15_18"]
+        table = data["15_28"]
 
         sf = None
-        # Search through 15_18 table for matching values
-        # If Criteria is "Multiple", treat it as "Corrosion"
-        if criteria.strip().lower() == "multiple":
+        # Search through 15_28 table for matching values
+        # If Criteria is "Multiple", treat it as "Corrosion" and ignore weld_interaction_sf
+        if criteria.strip().lower() == "multiple" or criteria.strip().lower() == "metal loss" or criteria.strip().lower() == "corrosion":
             criteria = "Corrosion"
+            weld_interaction_sf = math.nan  # Ignore weld interaction SF
+
+        if criteria.strip().lower() == "plain":
+            weld_interaction_sf = math.nan  # Ignore weld interaction SF
+            metal_loss_location = math.nan
+
+        if criteria.strip().lower() == "weld":
+            metal_loss_location = math.nan  # Ignore metal loss location
 
         # Make sure that Certainty is a decimal value (e.g., 0.9, 0.8, 0.7)
         if certainty > 1.0:
             certainty = certainty / 100.0
+
+        # If metal_loss_location is not provided, set it to NaN
+        if not metal_loss_location or metal_loss_location == "":
+            metal_loss_location = math.nan
 
         # Check the Restraint input and convert it to either "Restrained" or "Unrestrained" based on substring
         # Treat Shallow/Deep Restrained as "Restrained"
@@ -1262,8 +1285,8 @@ def get_scale_factor_l2(restraint: str, certainty: float, safety_factor: float,
 
         for row in table:
             if (row["Interaction"] == criteria and 
-                row["OD_ID"] == metal_loss_location and
-                row["Reduction_Factor"] == weld_interaction_sf and
+                ((math.isnan(row["OD_ID"]) and math.isnan(metal_loss_location)) or (row["OD_ID"] == metal_loss_location)) and
+                ((math.isnan(row["Reduction_Factor"]) and math.isnan(weld_interaction_sf)) or (row["Reduction_Factor"] == weld_interaction_sf)) and
                 row["Restraint"] == restraint and
                 row["Safety_Factor"] == safety_factor and
                 row["Certainty"] == certainty):
@@ -1276,6 +1299,7 @@ def get_scale_factor_l2(restraint: str, certainty: float, safety_factor: float,
         return sf
     
     except Exception:
+        traceback.print_exc()
         return "Error in calculation"
     
 def get_scale_factor_l2_wrap(restraint: str, certainty: float, safety_factor: float, 
@@ -1374,8 +1398,9 @@ def get_RL(damage: float, service_years: float, scale_factor: float, weld_sf: fl
     """
     Calculate the Remaining Life (RL) and RL with Factors
     """
+    RL = RL_sf = None
     if isinstance(scale_factor, (int, float)):
-        RL = (1 - damage) / (damage / service_years)
+        RL = (1.0 - damage) / (damage / service_years)
         RL_sf = RL / (scale_factor * weld_sf * ml_rf)
 
     if not RL or not RL_sf:
@@ -1410,7 +1435,10 @@ def get_total_damage(dd: rfa.DentData, km_values: list, prange_list: list, MD49_
         
         # ABS Damage Calculations
         if curve_selection["Category"] == "ABS":
-            curve_data = fatigue_curves[curve_selection["Category"]][curve_selection["Curve"]]
+            for curve in fatigue_curves[curve_selection["Category"]]:
+                if curve["Curve"] == curve_selection["Curve"]:
+                    curve_data = curve
+                    break
             a_ksi = curve_data["A_ksi"]
             m = curve_data["m"]
             c_ksi = curve_data["C_ksi"]
@@ -1431,7 +1459,10 @@ def get_total_damage(dd: rfa.DentData, km_values: list, prange_list: list, MD49_
         
         # DNV Damage Calculations
         if curve_selection["Category"] == "DNV":
-            curve_data = fatigue_curves[curve_selection["Category"]][curve_selection["Curve"]]
+            for curve in fatigue_curves[curve_selection["Category"]]:
+                if curve["Curve"] == curve_selection["Curve"]:
+                    curve_data = curve
+                    break
             m1 = curve_data["m1"]
             loga1 = curve_data["loga1"]
             m2 = curve_data["m2"]
@@ -1457,8 +1488,10 @@ def get_total_damage(dd: rfa.DentData, km_values: list, prange_list: list, MD49_
         
         # BS Damage Calculations
         if curve_selection["Category"] == "BS":
-            curve_data = fatigue_curves[curve_selection["Category"]][curve_selection["Curve"]]
-            curve_name = curve_data["Curve"]
+            for curve in fatigue_curves[curve_selection["Category"]]:
+                if curve["Curve"] == curve_selection["Curve"]:
+                    curve_data = curve
+                    break
             log10c0 = curve_data["log10C0"]
             m = curve_data["m"]
             sd = curve_data["SD"]
@@ -1482,10 +1515,11 @@ def get_total_damage(dd: rfa.DentData, km_values: list, prange_list: list, MD49_
 
         return damage_results
     except Exception:
+        traceback.print_exc()
         return "Error in calculation"
 
 
-def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, save_to_excel: bool = False, excel_path: str = "") -> dict | str:
+def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, curve_selection: dict, save_to_excel: bool = False, excel_path: str = "") -> dict | str:
     """
     Main processing function to read pipe characteristics, rainflow data, and feature sizing from MD-4-9 profiles.
     Computes and outputs the damage results. 
@@ -1494,6 +1528,7 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         dd: DentData object containing pipe and feature characteristics
         pf: CreateProfiles object containing MD-4-9 profile results
         rainflow_results: Tuple containing rainflow cycle data, such as SSI, CI, MD49_SSI, cycles, and MD49_bins
+        curve_selection: Dictionary containing curve selection parameters
         save_to_excel: Boolean flag to save results to Excel
         excel_path: Path to the Excel file to save results
     """
@@ -1508,34 +1543,35 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         ili_pressure_psmys = 100* (dd.ili_pressure * dd.OD / (2 * dd.WT)) / dd.SMYS
         pmean_list_short = [25, 45, 65]
         closest_pmean = min(pmean_list_short, key=lambda x: abs(x - pressure_mean))
+
         rp_US_CCW = md49.get_restraint_parameter(pf._results_axial_us["areas"][15],
                                                  pf._results_circ_us_ccw["areas"][15],
-                                                 pf._results_circ_us_ccw["lengths"][70],
-                                                 pf._results_axial_us["lengths"][15],
-                                                 pf._results_axial_us["lengths"][30],
-                                                 pf._results_axial_us["lengths"][50],
-                                                 pf._results_circ_us_ccw["lengths"][80])
+                                                 pf._results_circ_us_ccw["lengths"][70]["length"],
+                                                 pf._results_axial_us["lengths"][15]["length"],
+                                                 pf._results_axial_us["lengths"][30]["length"],
+                                                 pf._results_axial_us["lengths"][50]["length"],
+                                                 pf._results_circ_us_ccw["lengths"][80]["length"])
         rp_US_CW = md49.get_restraint_parameter(pf._results_axial_us["areas"][15],
                                                  pf._results_circ_us_cw["areas"][15],
-                                                 pf._results_circ_us_cw["lengths"][70],
-                                                 pf._results_axial_us["lengths"][15],
-                                                 pf._results_axial_us["lengths"][30],
-                                                 pf._results_axial_us["lengths"][50],
-                                                 pf._results_circ_us_cw["lengths"][80])
+                                                 pf._results_circ_us_cw["lengths"][70]["length"],
+                                                 pf._results_axial_us["lengths"][15]["length"],
+                                                 pf._results_axial_us["lengths"][30]["length"],
+                                                 pf._results_axial_us["lengths"][50]["length"],
+                                                 pf._results_circ_us_cw["lengths"][80]["length"])
         rp_DS_CCW = md49.get_restraint_parameter(pf._results_axial_ds["areas"][15],
                                                  pf._results_circ_ds_ccw["areas"][15],
-                                                 pf._results_circ_ds_ccw["lengths"][70],
-                                                 pf._results_axial_ds["lengths"][15],
-                                                 pf._results_axial_ds["lengths"][30],
-                                                 pf._results_axial_ds["lengths"][50],
-                                                 pf._results_circ_ds_ccw["lengths"][80])
+                                                 pf._results_circ_ds_ccw["lengths"][70]["length"],
+                                                 pf._results_axial_ds["lengths"][15]["length"],
+                                                 pf._results_axial_ds["lengths"][30]["length"],
+                                                 pf._results_axial_ds["lengths"][50]["length"],
+                                                 pf._results_circ_ds_ccw["lengths"][80]["length"])
         rp_DS_CW = md49.get_restraint_parameter(pf._results_axial_ds["areas"][15],
                                                  pf._results_circ_ds_cw["areas"][15],
-                                                 pf._results_circ_ds_cw["lengths"][70],
-                                                 pf._results_axial_ds["lengths"][15],
-                                                 pf._results_axial_ds["lengths"][30],
-                                                 pf._results_axial_ds["lengths"][50],
-                                                 pf._results_circ_ds_cw["lengths"][80])
+                                                 pf._results_circ_ds_cw["lengths"][70]["length"],
+                                                 pf._results_axial_ds["lengths"][15]["length"],
+                                                 pf._results_axial_ds["lengths"][30]["length"],
+                                                 pf._results_axial_ds["lengths"][50]["length"],
+                                                 pf._results_circ_ds_cw["lengths"][80]["length"])
         calc_restraint = get_restraint([rp_US_CCW, rp_US_CW, rp_DS_CCW, rp_DS_CW], dd.OD, dd.dent_depth_percent)
         
         # MD-4-9 Prange list
@@ -1545,56 +1581,56 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         pmean_list = [15,20,25,30,35,40,45,25,30,35,40,45,50,35,40,45,50,55,45,50,55,60,55,60,65,65,70,75]
 
         # Create lists of results
-        l0_Km_result = get_km_l0(dd.OD, dd.WT, dd.restraint_condition, max_pressure_mean)
+        l0_Km_result = get_km_l0(dd.OD, dd.WT, calc_restraint, max_pressure_mean)
         l05_Km_results = [0] * len(prange_list)
         for i, val in enumerate(prange_list):
-            l05_Km_results[i] = get_km_l05(dd.restraint_condition, dd.OD, dd.WT, val)
+            l05_Km_results[i] = get_km_l05(calc_restraint, dd.OD, dd.WT, val)
         l05p_Km_results = [0] * len(prange_list)
         for i, _ in enumerate(prange_list):
-            l05p_Km_results[i] = get_km_l05p(dd.OD, dd.WT, prange_list[i], pmean_list[i], dd.restraint_condition)
+            l05p_Km_results[i] = get_km_l05p(dd.OD, dd.WT, prange_list[i], pmean_list[i], calc_restraint)
         l075_Km_results = [0] * len(prange_list)
         for i, val in enumerate(prange_list):
-            l075_Km_results[i] = get_km_l075(dd.OD, dd.WT, val, dd.dent_depth_percent, dd.restraint_condition)
+            l075_Km_results[i] = get_km_l075(dd.OD, dd.WT, val, dd.dent_depth_percent, calc_restraint)
         l075p_Km_results = [0] * len(prange_list)
         for i, _ in enumerate(prange_list):
-            l075p_Km_results[i] = get_km_l075p(dd.OD, dd.WT, prange_list[i], pmean_list[i], dd.dent_depth_percent, dd.restraint_condition)
-        l1_N_result = get_n_l1(dd.restraint_condition, dd.OD, dd.WT, closest_pmean, ili_pressure_psmys, dd.SMYS, 
+            l075p_Km_results[i] = get_km_l075p(dd.OD, dd.WT, prange_list[i], pmean_list[i], dd.dent_depth_percent, calc_restraint)
+        l1_N_result = get_n_l1(calc_restraint, dd.OD, dd.WT, closest_pmean, ili_pressure_psmys, dd.SMYS/1000, 
                                pf.US_LAX, pf.US_AAX, pf.DS_LAX, pf.DS_AAX, 
                                pf.US_CCW_LTR, pf.US_CCW_ATR, pf.US_CW_LTR, pf.US_CW_ATR,
                                pf.DS_CCW_LTR, pf.DS_CCW_ATR, pf.DS_CW_LTR, pf.DS_CW_ATR)
         l2_N_results = [0] * len(prange_list)
         for i, _ in enumerate(pmin_list):
-            l2_N_results[i] = get_n_l2(dd.restraint_condition, dd.OD, dd.WT, pmean_list[i], pmax_list[i], pmin_list[i], ili_pressure_psmys, dd.SMYS,
+            l2_N_results[i] = get_n_l2(calc_restraint, dd.OD, dd.WT, pmean_list[i], pmax_list[i], pmin_list[i], ili_pressure_psmys, dd.SMYS/1000,
                                        pf.US_LAX, pf.US_AAX, pf.DS_LAX, pf.DS_AAX, 
                                        pf.US_CCW_LTR, pf.US_CCW_ATR, pf.US_CW_LTR, pf.US_CW_ATR,
                                        pf.DS_CCW_LTR, pf.DS_CCW_ATR, pf.DS_CW_LTR, pf.DS_CW_ATR)
         l2_Km_results = [0] * len(prange_list)
-        lax30_us = pf._results_axial_us["lengths"][30]
-        lax75_us = pf._results_axial_us["lengths"][75]
-        lax85_us = pf._results_axial_us["lengths"][85]
+        lax30_us = pf._results_axial_us["lengths"][30]["length"]
+        lax75_us = pf._results_axial_us["lengths"][75]["length"]
+        lax85_us = pf._results_axial_us["lengths"][85]["length"]
         aax30_us = pf._results_axial_us["areas"][30]
         aax75_us = pf._results_axial_us["areas"][75]
         aax85_us = pf._results_axial_us["areas"][85]
-        lax30_ds = pf._results_axial_ds["lengths"][30]
-        lax75_ds = pf._results_axial_ds["lengths"][75]
-        lax85_ds = pf._results_axial_ds["lengths"][85]
+        lax30_ds = pf._results_axial_ds["lengths"][30]["length"]
+        lax75_ds = pf._results_axial_ds["lengths"][75]["length"]
+        lax85_ds = pf._results_axial_ds["lengths"][85]["length"]
         aax30_ds = pf._results_axial_ds["areas"][30]
         aax75_ds = pf._results_axial_ds["areas"][75]
         aax85_ds = pf._results_axial_ds["areas"][85]
-        ltr75_us_cw = pf._results_circ_us_cw["lengths"][75]
+        ltr75_us_cw = pf._results_circ_us_cw["lengths"][75]["length"]
         atr75_us_cw = pf._results_circ_us_cw["areas"][75]
-        ltr85_us_cw = pf._results_circ_us_cw["lengths"][85]
-        ltr75_us_ccw = pf._results_circ_us_ccw["lengths"][75]
+        ltr85_us_cw = pf._results_circ_us_cw["lengths"][85]["length"]
+        ltr75_us_ccw = pf._results_circ_us_ccw["lengths"][75]["length"]
         atr75_us_ccw = pf._results_circ_us_ccw["areas"][75]
-        ltr85_us_ccw = pf._results_circ_us_ccw["lengths"][85]
-        ltr75_ds_cw = pf._results_circ_ds_cw["lengths"][75]
+        ltr85_us_ccw = pf._results_circ_us_ccw["lengths"][85]["length"]
+        ltr75_ds_cw = pf._results_circ_ds_cw["lengths"][75]["length"]
         atr75_ds_cw = pf._results_circ_ds_cw["areas"][75]
-        ltr85_ds_cw = pf._results_circ_ds_cw["lengths"][85]
-        ltr75_ds_ccw = pf._results_circ_ds_ccw["lengths"][75]
+        ltr85_ds_cw = pf._results_circ_ds_cw["lengths"][85]["length"]
+        ltr75_ds_ccw = pf._results_circ_ds_ccw["lengths"][75]["length"]
         atr75_ds_ccw = pf._results_circ_ds_ccw["areas"][75]
-        ltr85_ds_ccw = pf._results_circ_ds_ccw["lengths"][85]
+        ltr85_ds_ccw = pf._results_circ_ds_ccw["lengths"][85]["length"]
         for i, _ in enumerate(prange_list):
-            l2_Km_results[i] = get_km_l2(dd.OD, dd.WT, dd.restraint_condition,
+            l2_Km_results[i] = get_km_l2(dd.OD, dd.WT, calc_restraint,
                                          lax30_us, lax75_us, lax85_us, aax30_us, aax75_us, aax85_us, 
                                          lax30_ds, lax75_ds, lax85_ds, aax30_ds, aax75_ds, aax85_ds, 
                                          ltr75_us_cw, atr75_us_cw, ltr85_us_cw, ltr75_us_ccw, atr75_us_ccw, ltr85_us_ccw,
@@ -1609,13 +1645,16 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
                     ltr75_us_ccw, atr75_us_ccw, ltr85_us_ccw,
                     ltr75_ds_cw, atr75_ds_cw, ltr85_ds_cw,
                     ltr75_ds_ccw, atr75_ds_ccw, ltr85_ds_ccw)
-        l2_md24_unbinned_results = get_md24_unbinned(dd.OD, dd.WT, dd.SMYS, dd.restraint_condition,
+        l2_md24_unbinned_results = get_md24_unbinned(dd.OD, dd.WT, dd.SMYS, calc_restraint,
                                                      cycles, ili_pressure_psmys, km_params)
         # Calculate scale and safety factors
-        cps_sf = 4 if dd.CPS else 2
-        weld_sf = 10 if str(dd.interaction_weld).lower() == "yes" else 5
-        ml_rf = dd.WT/(dd.WT - (dd.ml_depth_percent/100)*dd.WT)
-        criteria = get_criteria_type(dd.interaction_corrosion, str(dd.interaction_weld).lower() == "yes")
+        cps_sf = 4.0 if dd.CPS else 2.0
+        weld_sf = 10.0 if dd.interaction_weld == True else 5.0
+        if not math.isnan(dd.ml_depth_percent):
+            ml_rf = dd.WT/(dd.WT - (dd.ml_depth_percent/100)*dd.WT)
+        else:
+            ml_rf = 1.0
+        criteria = get_criteria_type(dd.interaction_corrosion, dd.interaction_weld)
         l0_sf = get_scale_factor_md53(dd.confidence, cps_sf, criteria, "0")
         l05_sf = get_scale_factor_md53(dd.confidence, cps_sf, criteria, "0.5")
         l05p_sf = get_scale_factor_md53(dd.confidence, cps_sf, criteria, "0.5+")
@@ -1623,9 +1662,8 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         l075p_sf = get_scale_factor_md53(dd.confidence, cps_sf, criteria, "0.75+")
         l1_sf = get_scale_factor_md53(dd.confidence, cps_sf, criteria, "1")
         l2_sf = get_scale_factor_md53(dd.confidence, cps_sf, criteria, "2")
-        l2_md24_sf = get_scale_factor_l2_wrap(dd.restraint_condition, dd.confidence, cps_sf, criteria, dd.ml_location, weld_sf)
+        l2_md24_sf = get_scale_factor_l2_wrap(calc_restraint, dd.confidence, cps_sf, criteria, dd.ml_location, weld_sf)
         # Calculate damage/year, and then calculate remaining life. Apply all factors to determine remaining life with factors
-        curve_selection = {"Category": "BS", "Curve": "D", "SD": 0}
         RLA_l0, RLA_l0_sf = get_RL(get_total_damage(dd, [l0_Km_result] * len(prange_list), prange_list, MD49_bins, curve_selection), dd.service_years, l0_sf, weld_sf, ml_rf)
         RLA_l05, RLA_l05_sf = get_RL(get_total_damage(dd, l05_Km_results, prange_list, MD49_bins, curve_selection), dd.service_years, l05_sf, weld_sf, ml_rf)
         RLA_l05p, RLA_l05p_sf = get_RL(get_total_damage(dd, l05p_Km_results, prange_list, MD49_bins, curve_selection), dd.service_years, l05p_sf, weld_sf, ml_rf)
@@ -1640,7 +1678,20 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         damage_val = sum(damage_val)
         RLA_l2, RLA_l2_sf = get_RL(damage_val, dd.service_years, l2_sf, weld_sf, ml_rf)
         RLA_l2_md24, RLA_l2_md24_sf = get_RL(get_total_damage(dd, l2_Km_results, prange_list, MD49_bins, curve_selection), dd.service_years, l2_md24_sf, weld_sf, ml_rf)
-
+        RLA_l2_md24_unbinned = {
+                                    "ABS": {},
+                                    "DNV": {},
+                                    "BS": {}
+                                }
+        RLA_l2_md24_unbinned_sf = {
+                                    "ABS": {},
+                                    "DNV": {},
+                                    "BS": {}
+                                }
+        # Determine the Remaining Life (RL) for each fatigue curve category and curve option
+        for category in ["ABS", "DNV", "BS"]:
+            for curve, damage in l2_md24_unbinned_results[category].items():
+                RLA_l2_md24_unbinned[category][curve], RLA_l2_md24_unbinned_sf[category][curve] = get_RL(float(damage), dd.service_years, l2_md24_sf, weld_sf, ml_rf)
         # Export results to Excel if specified
         if save_to_excel and excel_path:
             wb = openpyxl.load_workbook(filename=rla_template, read_only=False)
@@ -1687,7 +1738,7 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
             l0_col = "AR"
             l05_col = "AZ"
             l05p_col = "BH"
-            l075_col = "BS"
+            l075_col = "BP"
             l075p_col = "BX"
             l2_col = "CH"
             l2_md24_col = "CJ"
@@ -1785,21 +1836,29 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
 
         # Return results as a dictionary
         results = {
-            "0": [{"Life w/o SF": RLA_l0, "Life with SF": RLA_l0_sf}],
-            "0.5": [{"Life w/o SF": RLA_l05, "Life with SF": RLA_l05_sf}],
-            "0.5+": [{"Life w/o SF": RLA_l05p, "Life with SF": RLA_l05p_sf}],
-            "0.75": [{"Life w/o SF": RLA_l075, "Life with SF": RLA_l075_sf}],
-            "0.75+": [{"Life w/o SF": RLA_l075p, "Life with SF": RLA_l075p_sf}],
-            "1": [{"Life w/o SF": RLA_l1, "Life with SF": RLA_l1_sf}],
-            "2": [{"Life w/o SF": RLA_l2, "Life with SF": RLA_l2_sf}],
-            "2_MD24": [{"Life w/o SF": RLA_l2_md24, "Life with SF": RLA_l2_md24_sf}],
-            "2 MD24 Unbinned": [{"ABS_D": l2_md24_unbinned_results["ABS"]["D"],
-                               "DNV_C": l2_md24_unbinned_results["DNV"]["C"],
-                               "BS_D": l2_md24_unbinned_results["BS"]["D"]}]
+            "Calculated Restraint": calc_restraint,
+            "Quadrant RP Values": {
+                "US-CCW": rp_US_CCW,
+                "US-CW": rp_US_CW,
+                "DS-CCW": rp_DS_CCW,
+                "DS-CW": rp_DS_CW
+            },
+            "Life": {
+                "0": {"No SF": RLA_l0, "Yes SF": RLA_l0_sf},
+                "0.5": {"No SF": RLA_l05, "Yes SF": RLA_l05_sf},
+                "0.5+": {"No SF": RLA_l05p, "Yes SF": RLA_l05p_sf},
+                "0.75": {"No SF": RLA_l075, "Yes SF": RLA_l075_sf},
+                "0.75+": {"No SF": RLA_l075p, "Yes SF": RLA_l075p_sf},
+                "1": {"No SF": RLA_l1, "Yes SF": RLA_l1_sf},
+                "2": {"No SF": RLA_l2, "Yes SF": RLA_l2_sf},
+                "2_md24": {"No SF": RLA_l2_md24, "Yes SF": RLA_l2_md24_sf},
+                "2_md24_unbinned": {"No SF": RLA_l2_md24_unbinned, "Yes SF": RLA_l2_md24_unbinned_sf}
+            },
         }
         return results
 
     except Exception as e:
+        traceback.print_exc()
         return f"Error in processing: {e}"
 
 
