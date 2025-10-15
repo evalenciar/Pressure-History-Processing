@@ -24,11 +24,12 @@ import processing as pro
 
 overall_start_time = time.time()
 
-pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML).xlsx"
+# pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML).xlsx"
+pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML) - Manual Review.xlsx"
 pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Pump Stations.xlsx"
 caliper_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Caliper Radii"
-output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results"
-summary_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Summary Figures"
+output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.15"
+summary_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.15\Summary Figures"
 
 df_PT = pd.read_excel(pipe_tally, sheet_name="Sheet1", header=1, engine='calamine')
 
@@ -90,7 +91,7 @@ def create_contour_plot(df, category, feature_id, output_folder):
     plt.savefig(os.path.join(output_folder, f"{category}_Feature_{feature_id}_Contour.png"), dpi=300)
     plt.close(fig)
 
-def create_single_contour_plot(df, category, feature_id, OD, orientation, output_folder, restraint_value: str):
+def create_single_contour_plot(df: pro.Process, pf: md49.CreateProfiles, category, feature_id, OD, orientation, output_folder, restraint_value: str):
     # Create a single contour line plot of the smoothed data
     # Determine the appropriate restraint_value based on matching substring
     # API 1183 6.5.1.1 Girth Weld Interaction for Fatigue (using values in inches)
@@ -110,7 +111,9 @@ def create_single_contour_plot(df, category, feature_id, OD, orientation, output
     fig, ax = plt.subplots(figsize=(10, 6))
     c = ax.contourf(df.f_axial, df.f_circ, df.f_radius.T, levels=levels_smooth, cmap='viridis')
     cb = fig.colorbar(c, ax=ax)
-    min_idx = np.unravel_index(np.argmin(df.f_radius), df.f_radius.shape)
+    # Use the already determined minimum index from the md49 profiles
+    min_idx = pf.min_idx
+    # min_idx = np.unravel_index(np.argmin(df.f_radius), df.f_radius.shape)
     
     # Add a crosshair at the min_idx. Span the entire plot height and width
     ax.axhline(y=df.f_circ[min_idx[1]], color='red', linestyle='--', linewidth=0.8)
@@ -157,7 +160,7 @@ def create_smoothed_data_sheet(xlsm_file, df_smoothed, df_feature):
     wb.save(filename=xlsm_file)
     wb.close()
 
-def generate_summary_image(overall_results_path, results_path, dd: rfa.DentData, df, category, md49_results):
+def generate_summary_image(overall_results_path, results_path, dd: rfa.DentData, df, category, md49_results, pf):
     # Generate a summary image containing the following:
     # 1. General Information table containing: Category, Feature ID, OD, WT, SMYS, Dent Depth (%OD), Dent-Weld Interaction, Dent-Metal Loss Interaction
     # 2. Fatigue Results Summary table containing: select cells from the exported RLA results Excel file
@@ -168,7 +171,7 @@ def generate_summary_image(overall_results_path, results_path, dd: rfa.DentData,
     # 7. Downstream Circumferential Lengths (file normally named "{category}_Feature_{feature_id}_Results_DS_Circumferential_Lengths.png")
 
     # First create the single contour plot using the interaction window criteria
-    create_single_contour_plot(df, category, dd.dent_ID, dd.OD, dd.orientation, results_path, md49_results["Calculated Restraint"])
+    create_single_contour_plot(df, pf, category, dd.dent_ID, dd.OD, dd.orientation, results_path, md49_results["Calculated Restraint"])
 
     # Example: 4x2 grid (adjust as needed)
     fig = plt.figure(figsize=(12, 12))
@@ -190,7 +193,7 @@ def generate_summary_image(overall_results_path, results_path, dd: rfa.DentData,
         ["Pipe OD (in)", dd.OD],
         ["Pipe WT (in)", round(dd.WT, 3)],
         ["Pipe Grade (psi)", 'X70'],
-        ["Dent Depth (%OD)", dd.dent_depth_percent],
+        ["Dent Depth (%OD)", round(dd.dent_depth_percent, 3)],
         ["Dent Orientation [hh:mm]", dd.orientation],
         ["Dent-Weld Interaction", dd.interaction_weld],
         ["Dent-Metal Loss Interaction", dd.interaction_corrosion],
@@ -485,7 +488,7 @@ for category in categories:
         ######################################################################
         try:
             # Generate the summary image
-            fatigue_data, quadrant_values = generate_summary_image(summary_folder, results_path, dd, df, category, md49_results)
+            fatigue_data, quadrant_values = generate_summary_image(summary_folder, results_path, dd, df, category, md49_results, md49_profiles)
 
             # Save results to global notepad after each iteration
             with open(os.path.join(output_folder, f"All_Results.txt"), "a") as f:

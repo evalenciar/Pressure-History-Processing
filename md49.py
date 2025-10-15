@@ -237,9 +237,9 @@ class CreateProfiles:
                  OD: float = None, 
                  WT: float = None, 
                  ignore_edge: float = 0.1,
-                 percentages_axial: list = [95, 90, 85, 75, 60, 50, 40, 30, 20, 15, 10, 5],
-                 percentages_circ: list = [90, 85, 80, 75, 70, 60, 50, 40, 30, 20, 15, 10],
-                 percentages_area: list = [85, 75, 60, 50, 40, 30, 20, 15, 10],
+                 percentages_axial: list[int] = [95, 90, 85, 75, 60, 50, 40, 30, 20, 15, 10, 5],
+                 percentages_circ: list[int] = [90, 85, 80, 75, 70, 60, 50, 40, 30, 20, 15, 10],
+                 percentages_area: list[int] = [85, 75, 60, 50, 40, 30, 20, 15, 10],
                  process_data: bool = True,
                  file_path: str = None
                  ):
@@ -254,6 +254,57 @@ class CreateProfiles:
         self._results_circ_ds_cw = None
         if process_data:
             self._process_data(df, OD, WT, ignore_edge, percentages_axial, percentages_circ, percentages_area, file_path)
+
+    def __repr__(self):
+        # Provide a concise summary of key attributes. Combine the dictionaries into a single table for display.
+        # The table will have the quadrant names as columns, the percentage levels as the index, and the lengths and areas as values.
+        columns = ["US-Lengths", "US-Areas", "DS-Lengths", "DS-Areas", "US-CCW-Lengths", "US-CCW-Areas", "US-CW-Lengths", "US-CW-Areas", "DS-CCW-Lengths", "DS-CCW-Areas", "DS-CW-Lengths", "DS-CW-Areas"]
+        # There are some repeating percentage levels, so we will create a unique sorted list among all the lengths and areas
+        # Convert all index_values to integers
+        index_values = sorted(set(list(self._results_axial_us["lengths"].keys()) + 
+                                        list(self._results_axial_us["areas"].keys()) + 
+                                        list(self._results_axial_ds["lengths"].keys()) + 
+                                        list(self._results_axial_ds["areas"].keys()) + 
+                                        list(self._results_circ_us_ccw["lengths"].keys()) +
+                                        list(self._results_circ_us_ccw["areas"].keys()) +
+                                        list(self._results_circ_us_cw["lengths"].keys()) +
+                                        list(self._results_circ_us_cw["areas"].keys()) +
+                                        list(self._results_circ_ds_ccw["lengths"].keys()) +
+                                        list(self._results_circ_ds_ccw["areas"].keys()) +
+                                        list(self._results_circ_ds_cw["lengths"].keys()) +
+                                        list(self._results_circ_ds_cw["areas"].keys())),
+                                        reverse=True)
+        index_values = [int(i) for i in index_values]
+        # Go through each index value and extract the corresponding lengths and areas from each quadrant, using NaN if not present
+        data = []
+        for idx in index_values:
+            row = {
+                columns[0]: self._results_axial_us["lengths"].get(idx, "")["length"] if self._results_axial_us["lengths"].get(idx, "") != "" else "",
+                columns[1]: self._results_axial_us["areas"].get(idx, ""),
+                columns[2]: self._results_axial_ds["lengths"].get(idx, "")["length"] if self._results_axial_ds["lengths"].get(idx, "") != "" else "",
+                columns[3]: self._results_axial_ds["areas"].get(idx, ""),
+                columns[4]: self._results_circ_us_ccw["lengths"].get(idx, "")["length"] if self._results_circ_us_ccw["lengths"].get(idx, "") != "" else "",
+                columns[5]: self._results_circ_us_ccw["areas"].get(idx, ""),
+                columns[6]: self._results_circ_us_cw["lengths"].get(idx, "")["length"] if self._results_circ_us_cw["lengths"].get(idx, "") != "" else "",
+                columns[7]: self._results_circ_us_cw["areas"].get(idx, ""),
+                columns[8]: self._results_circ_ds_ccw["lengths"].get(idx, "")["length"] if self._results_circ_ds_ccw["lengths"].get(idx, "") != "" else "",
+                columns[9]: self._results_circ_ds_ccw["areas"].get(idx, ""),
+                columns[10]: self._results_circ_ds_cw["lengths"].get(idx, "")["length"] if self._results_circ_ds_cw["lengths"].get(idx, "") != "" else "",
+                columns[11]: self._results_circ_ds_cw["areas"].get(idx, ""),
+            }
+            data.append(row)
+        
+        summary_df = pd.DataFrame(data=data, index=index_values, columns=columns)
+        return_string = (
+            f"CreateProfiles Summary:\n"
+            f" - OD: {round(self._OD, 2)}-inch, WT: {round(self._WT, 3)}-inch\n"
+            f" - Dent Depth based on overall radius of {round(self._nominal_radius, 3)}-inch: {round(self._dent_depth, 3)}-inch ({round(self._dent_depth_percent, 3)} %OD)\n"
+            f" - Dent Location and Radius: (Axial={round(self._axial_min, 2)}-inch, Circumferential={round(self._circ_min, 2)}-deg, Radius={round(self._radius_min, 2)}-inch)\n"
+            # Insert the Summary Table here
+            f"Summary of Lengths and Areas by Quadrant (% levels as index):\n"
+            f"{summary_df.to_string()}\n"
+        )
+        return return_string
 
     def _process_data(self, 
                       df: pd.DataFrame, 
@@ -274,6 +325,8 @@ class CreateProfiles:
             Fraction of data to ignore at each edge when determining nominal radius.
         """
         self._df = df
+        self._OD = OD
+        self._WT = WT
         # Locate the deepest point, using the ignore_edge parameter to avoid edge effects
         start_idx = math.ceil(df.shape[0]*ignore_edge)
         end_idx = math.floor(df.shape[0]*(1-ignore_edge))
@@ -292,6 +345,7 @@ class CreateProfiles:
         # Determine the nominal internal radius
         self._nominal_radius = self.get_nominal(expected_nominal=(OD/2 - WT), ignore_edge=ignore_edge)
         self._dent_depth = self._nominal_radius - self._radius_min
+        self._dent_depth_percent = (self._dent_depth / OD) * 100
         # Determine the baseline index and radii for all four quadrants (index, radius)
         self._baseline_us = self.get_baseline(self._axial_us, axial_circ="axial")
         self._baseline_ds = self.get_baseline(self._axial_ds, axial_circ="axial", outbound_data=True, slope_tolerance=0.004)
@@ -318,7 +372,12 @@ class CreateProfiles:
         self.create_figure("Axial", self._axial_us, self._axial_ds, self._results_axial_us, self._results_axial_ds, self._axial_min, file_path)
         self.create_figure("Circ_US", self._circ_ccw, self._circ_cw, self._results_circ_us_ccw, self._results_circ_us_cw, self._circ_min, file_path)
         self.create_figure("Circ_DS", self._circ_ccw, self._circ_cw, self._results_circ_ds_ccw, self._results_circ_ds_cw, self._circ_min, file_path)
-
+    @property
+    def min_idx(self) -> tuple[int, int]:
+        """Tuple of (Axial index, Circumferential index) of the deepest point."""
+        axial_idx = self._df.index.get_loc(self._axial_min)
+        circ_idx = self._df.columns.get_loc(self._circ_min)
+        return (axial_idx, circ_idx)
     @property
     def df(self) -> pd.DataFrame:
         """DataFrame of the dent contour."""

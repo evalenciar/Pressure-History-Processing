@@ -6,6 +6,7 @@
 /Pipe Tally
 /Local
 /Validation
+/Manual Review
 /__pycache__/
 /.venv
 *.pyc

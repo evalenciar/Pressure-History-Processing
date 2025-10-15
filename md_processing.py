@@ -1534,6 +1534,11 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
     """
 
     try:
+        # If dd.dent_depth_percent is NaN or None, use the calculated value from pf._dent_depth_percent. Provide a warning.
+        if pd.isna(dd.dent_depth_percent) or dd.dent_depth_percent is None:
+            dd.dent_depth_percent = pf._dent_depth_percent
+            print("Warning: Dent depth percentage was missing. Using calculated value of {:.3f} %OD from profile data.".format(dd.dent_depth_percent))
+
         SSI, CI, MD49_SSI, cycles, MD49_bins = rainflow_results
         # Perform calculations and populate results
         min_pressure_mean = min(cycles[:, 1])
