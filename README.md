@@ -1,81 +1,100 @@
-# Pipeline Dents MD-4-9 Processing Workflow
+# Pipeline Dents MD-2-4 & MD-5-3 Processing Workflow
 
 ## Overview
 
-This project provides tools and scripts for processing pipeline pressure history data, performing rainflow analysis, smoothing ILI caliper data, and exporting MD-4-9 lengths and areas. The workflow is designed to help you filter, analyze, and export results from large datasets, particularly Excel files containing pipeline inspection and pressure data.
+This project provides comprehensive tools and scripts for processing pipeline pressure history data, performing rainflow analysis, smoothing ILI caliper data, and calculating fatigue damage using MD-2-4 and MD-5-3 methods. The workflow is designed to process large datasets of pipeline inspection data, pressure histories, and caliper measurements to generate detailed fatigue assessments and remaining life analyses.
 
 ---
 
-## Workflow Steps
+## New Integrated Workflow (batch_v3.py)
 
-### 1. **Input Data**
-- Place your Excel files (e.g., pressure history, dent ILI caliper data) in the working directory into respective folders (e.g., Pressure History, Caliper Data).
-- Ensure columns are named consistently (e.g., "Section", "Feature Type", "Tag Name", etc.).
+### **Unified Processing Pipeline**
+The new `batch_v3.py` script consolidates the entire workflow into a single, streamlined process that:
 
-### 2. **Pressure History Matching and Grouping**
-- The `combine_histories.py` script combines all pressure histories belong to the same line segment.
-- The script can group Excel files by matching column headers, allowing you to combine datasets from different years or sets.
-- Closest column name matching is available for flexible data selection.
-- For each dent, the workflow finds the nearest upstream and downstream stations based on distance, then extracts the corresponding pressure history columns for analysis.
-
-### 3. **Rainflow Analysis**
-- The `batch_rainflow.py` script performs rainflow counting and calculates fatigue metrics.
-- An individual Excel document is saved for every dent feature based on the template .xlsm Excel document.
-- This script depends on the custom `rainflow_analysis.py` module.
-- Results are saved after each iteration for progress tracking.
-
-### 4. **Raw ILI Caliper Data Smoothing**
-- The `batch_smoothing.py` script performs smoothing of the raw ILI caliper data.
-- A worksheet named `Smoothed Data` containing the results of the data smoothing will be saved to the individual Excel document.
-- This script depends on the custom `processing.py` module.
-- Results are saved after each iteration for progress tracking.
-
-### 5. **MD-4-9 Lengths and Areas**
-- The `batch_md49.py` script determines the corresponding lengths and areas of the dent feature based on the MD-4-9 method from [PR-214-114500-R01](https://www.prci.org/150177.aspx).
-- Multiple worksheets containing the results from the four quadrants (US-CCW, US-CW, DS-CCW, DS-CW) will be saved to the individual Excel document.
-- This script depends on the custom `API1183_v2.py` module.
-- Results are saved after each iteration for progress tracking.
+1. **Matches Dents to Stations**: Automatically finds upstream and downstream pressure monitoring stations for each dent based on continuous measure positions
+2. **Extracts Pressure Histories**: Retrieves relevant pressure data columns for rainflow analysis
+3. **Performs Rainflow Analysis**: Calculates stress cycles and fatigue damage using industry-standard methods
+4. **Applies MD-2-4 Method**: Calculates stress concentration factors (Km) based on dent geometry and restraint conditions
+5. **Applies MD-5-3 Method**: Determines scale factors and performs remaining life analysis
+6. **Processes Caliper Data**: Smooths raw ILI measurements and extracts MD-4-9 geometric parameters
+7. **Generates Comprehensive Reports**: Creates detailed Excel workbooks for each dent with all analysis results
 
 ---
 
-## Customization
+## Input Requirements
 
-- **Edit this README** to document your specific workflow, data sources, and any custom scripts you add.
-- Adjust script parameters (e.g., column names, file paths) as needed for your datasets.
+### **Required Files**
+1. **Pipe Tally File** (.xlsx): Contains dent information with columns:
+   - `AP Measure (m)`: Absolute position of each dent
+   - `Feature Type`: Type of pipeline feature
+   - `OD (mm)`, `WT (mm)`, `SMYS (MPa)`: Pipe specifications
+   - Additional dent geometry parameters
+
+2. **Pump Stations File** (.xlsx): Contains pressure monitoring station data:
+   - `Continuous Measure (m)`: Station positions
+   - `Tag Name`: Station identifiers matching pressure history column headers
+
+3. **Caliper Folder**: Directory containing ILI caliper data files (.xlsx)
+   - Raw measurement data for dent geometry analysis
+   - Files should be named to match dent identifiers
+
+4. **Output Folder**: Directory where individual dent analysis workbooks will be saved
+
+5. **Summary Folder**: Directory for summary reports and consolidated results
+
+### **Optional Files**
+- **Press Dict File** (.xlsx/.json): Custom pressure bin definitions for specialized analysis
 
 ---
 
-## Requirements
+## Processing Methods
 
-- Python 3.x
-- pandas
-- numpy
-- openpyxl
-- matplotlib
-- rainflow
-- scipy
+### **MD-2-4 Fatigue Analysis**
+- **Km Calculation**: Stress concentration factors based on:
+  - Dent geometry (length, area, depth measurements)
+  - Restraint conditions (unrestrained, shallow/deep restrained)
+  - Pressure loading conditions
+- **Fatigue Curves**: Support for ABS, DNV, and BS fatigue assessment standards
+- **Damage Accumulation**: Miner's rule implementation for multiple stress levels
 
-Install dependencies with:
+### **MD-5-3 Remaining Life Analysis**
+- **Scale Factors**: Uncertainty and safety factor calculations
+- **Confidence Levels**: Multiple certainty levels (50%, 80%, 90%)
+- **Assessment Levels**: Level 0 through Level 2 analyses
+- **Interaction Effects**: Metal loss and weld interaction considerations
+
+### **MD-4-9 Geometric Analysis**
+- **Data Smoothing**: Advanced filtering of raw caliper measurements
+- **Length Calculations**: Dent extent determination at multiple depth thresholds
+- **Area Calculations**: Cross-sectional area reductions
+- **Quadrant Analysis**: Separate processing for upstream/downstream and CW/CCW orientations
+
+---
+
+## Output Files
+
+### **Individual Dent Workbooks**
+Each processed dent generates a comprehensive Excel workbook containing:
+
+1. **Summary Sheet**: Key results and assessment outcomes
+2. **Pressure History**: Extracted and processed pressure data
+3. **Rainflow Results**: Cycle counting and stress range analysis
+4. **MD-2-4 Analysis**: Km calculations and fatigue damage assessment
+5. **MD-5-3 Analysis**: Scale factors and remaining life calculations
+6. **Smoothed Data**: Processed caliper measurements
+7. **MD-4-9 Results**: Length and area calculations by quadrant
+8. **Charts and Visualizations**: Graphical representations of key results
+
+### **Summary Reports**
+- **Processing Log**: Detailed record of all operations performed
+- **Batch Summary**: Consolidated results across all processed dents
+- **Error Reports**: Documentation of any processing issues or failures
+
+---
+
+## Installation and Setup
+
+### **Dependencies**
+```bash
+pip install pandas numpy openpyxl matplotlib rainflow scipy xlwings
 ```
-pip install pandas numpy openpyxl matplotlib rainflow scipy
-```
-
----
-
-## Notes
-
-- Always check your column names and data types before running scripts.
-- Save your results frequently to avoid data loss.
-- For large datasets, monitor memory usage and consider processing in batches.
-
----
-
-## To Do
-
-- [ ] Add more detailed documentation for each script.
-- [ ] Include sample data files.
-- [ ] Expand error handling and logging.
-
----
-
-*Edit this README to reflect your workflow and project
