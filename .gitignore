@@ -2,6 +2,7 @@
 /Archive
 /Combined Data
 /templates/*.xlsm
+/templates/*.xlsx
 /Testing Grounds*
 /Pipe Tally
 /Local
@@ -15,7 +16,6 @@
 /Coefficient Tables1
 *.pyc
 *.ipynb
-*.xlsx
 
 # Ignore these files
 single_rainflow_analysis_v2.2.py
