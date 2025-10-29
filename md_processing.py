@@ -20,6 +20,14 @@ rla_template = r"C:\Users\emman\Documents\SoftDev\Pressure History Processing\te
 table_md = 'Tables_Coefficients.json'
 table_fatigue = 'Tables_FatigueCurves.json'
 
+# Default MD-4-9 bin values
+pmin_list = [10,10,10,10,10,10,10,20,20,20,20,20,20,30,30,30,30,30,40,40,40,40,50,50,50,60,60,70]
+pmax_list = [20,30,40,50,60,70,80,30,40,50,60,70,80,40,50,60,70,80,50,60,70,80,60,70,80,70,80,80]
+prange_list = [10,20,30,40,50,60,70,10,20,30,40,50,60,10,20,30,40,50,10,20,30,40,10,20,30,10,20,10]
+pmean_list = [15,20,25,30,35,40,45,25,30,35,40,45,50,35,40,45,50,55,45,50,55,60,55,60,65,65,70,75]
+# Create a dictionary containing pmin, pmax, prange, pmean lists for easy access. Organize it by bin number (1-28).
+md49_bins = {i+1: {"pmin": pmin_list[i], "pmax": pmax_list[i], "prange": prange_list[i], "pmean": pmean_list[i]} for i in range(len(pmin_list))}
+
 def get_km_l0(od: float, wt: float, restraint: str, max_pct_psmys: float) -> float | str:
     if od <= 0 or wt <= 0:
         return "Error in Inputs"
@@ -1519,7 +1527,7 @@ def get_total_damage(dd: rfa.DentData, km_values: list, prange_list: list, MD49_
         return "Error in calculation"
 
 
-def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, curve_selection: dict, save_to_excel: bool = False, excel_path: str = "") -> dict | str:
+def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, curve_selection: dict, save_to_excel: bool = False, excel_path: str = "", press_dict: dict = md49_bins) -> dict | str:
     """
     Main processing function to read pipe characteristics, rainflow data, and feature sizing from MD-4-9 profiles.
     Computes and outputs the damage results. 
@@ -1531,6 +1539,7 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         curve_selection: Dictionary containing curve selection parameters
         save_to_excel: Boolean flag to save results to Excel
         excel_path: Path to the Excel file to save results
+        press_dict: Dictionary containing pressure bin values (pmin, pmax, prange, pmean) in %SMYS. Default is the standard MD-4-9 bins.
     """
 
     try:
@@ -1538,6 +1547,14 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
         if pd.isna(dd.dent_depth_percent) or dd.dent_depth_percent is None:
             dd.dent_depth_percent = pf._dent_depth_percent
             print("Warning: Dent depth percentage was missing. Using calculated value of {:.3f} %OD from profile data.".format(dd.dent_depth_percent))
+
+        # Make the second level keys lowercase for consistency, and the first level keys integers
+        press_dict = {int(k): {kk.lower(): vv for kk, vv in v.items()} for k, v in press_dict.items()}
+        # Separate the pressure bins into lists
+        pmin_list = [val["pmin"] for val in press_dict.values()]
+        pmax_list = [val["pmax"] for val in press_dict.values()]
+        prange_list = [val["prange"] for val in press_dict.values()]
+        pmean_list = [val["pmean"] for val in press_dict.values()]
 
         SSI, CI, MD49_SSI, cycles, MD49_bins = rainflow_results
         # Perform calculations and populate results
@@ -1578,12 +1595,6 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
                                                  pf._results_axial_ds["lengths"][50]["length"],
                                                  pf._results_circ_ds_cw["lengths"][80]["length"])
         calc_restraint = get_restraint([rp_US_CCW, rp_US_CW, rp_DS_CCW, rp_DS_CW], dd.OD, dd.dent_depth_percent)
-        
-        # MD-4-9 Prange list
-        pmin_list = [10,10,10,10,10,10,10,20,20,20,20,20,20,30,30,30,30,30,40,40,40,40,50,50,50,60,60,70]
-        pmax_list = [20,30,40,50,60,70,80,30,40,50,60,70,80,40,50,60,70,80,50,60,70,80,60,70,80,70,80,80]
-        prange_list = [10,20,30,40,50,60,70,10,20,30,40,50,60,10,20,30,40,50,10,20,30,40,10,20,30,10,20,10]
-        pmean_list = [15,20,25,30,35,40,45,25,30,35,40,45,50,35,40,45,50,55,45,50,55,60,55,60,65,65,70,75]
 
         # Create lists of results
         l0_Km_result = get_km_l0(dd.OD, dd.WT, calc_restraint, max_pressure_mean)
@@ -1864,6 +1875,6 @@ def process(dd: rfa.DentData, pf: md49.CreateProfiles, rainflow_results: tuple, 
 
     except Exception as e:
         traceback.print_exc()
-        return f"Error in processing: {e}"
+        raise e
 
 

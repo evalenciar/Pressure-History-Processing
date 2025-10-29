@@ -24,8 +24,7 @@ import processing as pro
 
 overall_start_time = time.time()
 
-# pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML).xlsx"
-pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML) - Manual Review.xlsx"
+pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML).xlsx"
 pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Pump Stations.xlsx"
 caliper_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Caliper Radii"
 output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.15"
@@ -391,7 +390,7 @@ for category in categories:
                 os.mkdir(results_path)
 
             # Perform RLA for liquids
-            SSI, CI, MD49_SSI, cycles, MD49_bins = rfa.liquid([upstream_pressure, downstream_pressure], time_data, results_path, dd)
+            SSI, CI, MD49_SSI, cycles, MD49_bins, _, _ = rfa.liquid([upstream_pressure, downstream_pressure], time_data, results_path, dd)
             
             result_dict = {
                 'Category': category,

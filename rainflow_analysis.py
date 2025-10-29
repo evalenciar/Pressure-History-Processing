@@ -62,7 +62,7 @@ class DentData:
         self.orientation = orientation
         self.vendor_comments = vendor_comments
 
-def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycles:bool=False, save_md49:bool=False):
+def liquid(P_list, P_time, results_path, dd, press_dict: dict = None, save_history:bool=False, save_cycles:bool=False, save_md49:bool=False):
     # Extract the information for the specified dent
     dent_category = dd.dent_category
     dent_ID = dd.dent_ID
@@ -99,6 +99,10 @@ def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycle
     SSI = equivalent_cycles('ssi', cycles, OD, WT, SMYS, service_years, M, min_range)
     CI = equivalent_cycles('ci', cycles, OD, WT, SMYS, service_years, M, min_range)
     MD49_SSI, MD49_bins = MD49(cycles, OD, WT, SMYS, service_years, M, min_range)
+    if press_dict:
+        Neq_SSI, bin_cycles = custom_bins(cycles, OD, WT, SMYS, service_years, M, press_dict, min_range)
+    else:
+        Neq_SSI, bin_cycles = None, None
 
     # create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys)
 
@@ -117,7 +121,7 @@ def liquid(P_list, P_time, results_path, dd, save_history:bool=False, save_cycle
     # Graphing
     liquid_graphing(dent_ID, results_path, P, P_time, dent_category)
     
-    return SSI, CI, MD49_SSI, cycles, MD49_bins
+    return SSI, CI, MD49_SSI, cycles, MD49_bins, Neq_SSI, bin_cycles
   
 def liquid_graphing(dent_ID, results_path, P, P_time, dent_category:str = ''):
     # Save the interpolated pressure history 
@@ -240,6 +244,103 @@ def Px(Lx,hx,P1,P2,SG,L1,L2,h1,h2,D1,D2):
     Px = (P1 + K*h1 - P2 - K*h2)*(1/(((Lx - L1)*D2**5)/((L2 - Lx)*D1**5) + 1)) - K*(hx - h2) + P2
     
     return Px
+
+def custom_bins(cycles, OD: float, WT: float, SMYS: float, service_years: float, M: float, press_dict: dict, min_range: float =5) -> tuple[float, dict]:
+    '''
+    Use the custom pressure bins defined in press_dict to sum the cycles into the bins.
+    Parameters
+    ----------
+    cycles : array of floats
+        the array output from the rainflow analysis, with columns: [Pressure Range (psig), Pressure Mean (psig), Cycle Count, Index Start, Index End]
+    OD : float
+        the outside diameter of the pipe, in
+    WT : float
+        the wall thickness of the pipe, in
+    SMYS : float
+        the specified minimum yield strength of the pipe, psi
+    service_years : float
+        the number of years the pressure history represents, years
+    M : float
+        the slope of the S-N curve, typically 3.0 for steel
+    press_dict : dict
+        dictionary containing pressure bin values (pmin, pmax, prange, pmean) in %SMYS
+    min_range : float, optional
+        the minimum pressure range to consider for the analysis, default is 5 psi
+
+    Returns
+    -------
+    (bin_SSI : float, bin_cycles : np.ndarray)
+        A tuple containing the total damage equivalent cycles and a numpy array of the custom bins with their respective cycle counts.
+    '''
+    # Filter out cycles below the minimum range
+    custom_cycles = cycles.copy()
+    for i in range(len(custom_cycles)):
+        if custom_cycles[i,0] < min_range: 
+            custom_cycles[i,2] = 0
+    # Convert pressure values into units of % SMYS
+    custom_cycles[:,0] = 100*custom_cycles[:,0]*OD/(2*WT)/SMYS
+    custom_cycles[:,1] = 100*custom_cycles[:,1]*OD/(2*WT)/SMYS
+    
+    # Make the second level keys lowercase for consistency, and the first level keys integers
+    press_dict = {int(k): {kk.lower(): vv for kk, vv in v.items()} for k, v in press_dict.items()}
+    # Create an empty dictionary to hold the cycle counts for each bin
+    bin_cycles = {k: 0 for k in press_dict.keys()}
+    
+    # Create groups of equivalent Prange bins which will then be used for the iterative processing
+    bin_groups = {}
+    for bin_num, bin_vals in press_dict.items():
+        if bin_vals['prange'] not in bin_groups:
+            bin_groups[bin_vals['prange']] = []
+        bin_groups[bin_vals['prange']].append({int(bin_num): bin_vals["pmean"]})
+    # Sort the bin_groups by the prange key
+    bin_groups = dict(sorted(bin_groups.items()))
+
+    # Iterate through every pressure range cycle, and find the appropriate bin to add the cycle count to using the bin_groups
+    for i, press_range in enumerate(custom_cycles[:, 0]):
+        for bin_range, bin_vals in bin_groups.items():
+            if press_range <= bin_range:
+                for i, bin_val in enumerate(bin_vals):
+                    if i != len(bin_vals) - 1 and (custom_cycles[i,1] <= (list(bin_vals[i].values())[0] + list(bin_vals[i + 1].values())[0])/2):  # If the mean is less than the midpoint between this bin and the next bin, add it here
+                        bin_cycles[list(bin_val.keys())[0]] += custom_cycles[i,2]
+                        break
+                    if i == len(bin_vals) - 1:  # Last bin, so just add it here
+                        bin_cycles[list(bin_val.keys())[0]] += custom_cycles[i,2]
+                        break
+                break
+
+    # # Inversed version of bin_groups, where the keys are the bin means and the values are dicts of bin numbers and their pranges
+    # bin_groups2 = {}
+    # for bin_num, bin_vals in press_dict.items():
+    #     if bin_vals['pmean'] not in bin_groups2:
+    #         bin_groups2[bin_vals['pmean']] = []
+    #     bin_groups2[bin_vals['pmean']].append({int(bin_num): bin_vals["prange"]})
+    # # Sort the bin_groups2 by the bin means (the keys), and also sort the inner lists by their pranges
+    # for key in bin_groups2:
+    #     bin_groups2[key] = sorted(bin_groups2[key], key=lambda x: list(x.values())[0])
+    # bin_groups = dict(sorted(bin_groups2.items()))
+
+    # # Iterate through every pressure range cycle, and find the appropriate bin to add the cycle count to using the bin_groups
+    # for i, press_mean in enumerate(custom_cycles[:, 1]):
+    #     for bin_mean, bin_vals in bin_groups.items():
+    #         if press_mean <= bin_mean:
+    #             for i, bin_val in enumerate(bin_vals):
+    #                 if i != len(bin_vals) - 1 and (custom_cycles[i,1] <= (list(bin_vals[i].values())[0] + list(bin_vals[i + 1].values())[0])/2):  # If the mean is less than the midpoint between this bin and the next bin, add it here
+    #                     bin_cycles[list(bin_val.keys())[0]] += custom_cycles[i,2]
+    #                     break
+    #                 if i == len(bin_vals) - 1:  # Last bin, so just add it here
+    #                     bin_cycles[list(bin_val.keys())[0]] += custom_cycles[i,2]
+    #                     break
+    #             break
+
+    # Calculate the damage equivalent cycles for the custom bins
+    SSI_ref_stress = 13000  # psi
+    # The Neq SSI = (Prange_%SMYS * SMYS / SSI_ref_stress) ^ M * Cycles
+    Prange_pct_smys = np.array([v['prange'] for v in press_dict.values()])
+    Neq_SSI = sum(((Prange_pct_smys* SMYS / SSI_ref_stress) ** M) * np.array(list(bin_cycles.values()))) / service_years
+    # FOR REFERENCE: Calculate the MD49 Equivalent Cycles
+    # Neq_SSI_MD49s = sum(((((MD49_P_range/100)*SMYS)/SSI_ref_stress)**M)*MD49_bins)/service_years
+    # return Neq_SSI, np.array(list(bin_cycles.values()))
+    return Neq_SSI, bin_cycles
 
 def MD49(cycles, OD, WT, SMYS, service_years, M, min_range=5, identifier=''):
     # Create an empty array for all the MD-4-9 bins
