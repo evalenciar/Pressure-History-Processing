@@ -606,13 +606,15 @@ def main(pipe_tally, pump_stations, caliper_folder, output_folder, summary_folde
     print(f"FINISHED EXECUTING ENTIRE SCRIPT.")
 
 if __name__ == "__main__":
-    pipe_tally = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\KS12-14 Data Collection - (Fixed Headers and ML).xlsx"
-    pump_stations = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Pump Stations.xlsx"
-    caliper_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Caliper Radii"
-    output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.29"
-    summary_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.29\Summary"
+    pipe_tally = r"ENTER PATH HERE"
+    pump_stations = r"ENTER PATH HERE"
+    caliper_folder = r"ENTER PATH HERE"
+    output_folder = r"ENTER PATH HERE"
+    summary_folder = r"ENTER PATH HERE"
     press_dict_path = None
-    curve_selection = {"Category": "BS", "Curve": "D", "SD": 0}
+    curve_selection = {"Category": "BS", 
+                       "Curve": "D", 
+                       "SD": 0}
     main(pipe_tally, 
          pump_stations, 
          caliper_folder, 
