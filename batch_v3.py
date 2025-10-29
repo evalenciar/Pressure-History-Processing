@@ -13,10 +13,6 @@ import matplotlib.image as mpimg
 import os
 import traceback
 import time
-import openpyxl
-import xlwings as xw
-from openpyxl.utils.dataframe import dataframe_to_rows
-import json
 
 import rainflow_analysis as rfa
 import md49
@@ -294,7 +290,7 @@ def generate_summary_image(overall_results_path, results_path, dd: rfa.DentData,
                 fatigue_data[i][j] = np.nan
     return fatigue_data, quadrant_values
 
-def main(pipe_tally, pump_stations, caliper_folder, output_folder, summary_folder, press_dict_path=None):
+def main(pipe_tally, pump_stations, caliper_folder, output_folder, summary_folder, curve_selection, press_dict_path=None):
     overall_start_time = time.time()
 
     # Import the custom histogram bins from an Excel file
@@ -308,7 +304,6 @@ def main(pipe_tally, pump_stations, caliper_folder, output_folder, summary_folde
     categories = ['KS12', 'KS13', 'KS14']
     list_levels = ['Level 0', 'Level 0.5', 'Level 0.5+', 'Level 0.75', 'Level 0.75+', 'Level 1', 'Level 2', 'Level 2 (MD-2-4)']
     list_quadrants = ['US-CCW', 'US-CW', 'DS-CCW', 'DS-CW']
-    curve_selection = {"Category": "BS", "Curve": "D", "SD": 0}
 
     # Add columns to df_PT for Level 0 through Level 2 (MD-2-4) results
     for level in list_levels:
@@ -617,9 +612,11 @@ if __name__ == "__main__":
     output_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.29"
     summary_folder = r"C:\Users\emman\OneDrive - Softnostics\Projects\100001 - 100025\100004 (Acuren - Southbow Dent Analysis)\Client Documents\Results\Run 10.29\Summary"
     press_dict_path = None
+    curve_selection = {"Category": "BS", "Curve": "D", "SD": 0}
     main(pipe_tally, 
          pump_stations, 
          caliper_folder, 
          output_folder, 
          summary_folder, 
-         press_dict_path)
+         press_dict_path,
+         curve_selection)
