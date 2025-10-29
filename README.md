@@ -3,6 +3,7 @@
 ## Overview
 
 This project provides comprehensive tools and scripts for processing pipeline pressure history data, performing rainflow analysis, smoothing ILI caliper data, and calculating fatigue damage using MD-2-4 and MD-5-3 methods. The workflow is designed to process large datasets of pipeline inspection data, pressure histories, and caliper measurements to generate detailed fatigue assessments and remaining life analyses.
+This project provides comprehensive tools and scripts for processing pipeline pressure history data, performing rainflow analysis, smoothing ILI caliper data, and calculating fatigue damage using MD-2-4 and MD-5-3 methods. The workflow is designed to process large datasets of pipeline inspection data, pressure histories, and caliper measurements to generate detailed fatigue assessments and remaining life analyses.
 
 ---
 
