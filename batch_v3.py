@@ -615,7 +615,7 @@ if __name__ == "__main__":
     caliper_folder = r"ENTER PATH HERE"
     output_folder = r"ENTER PATH HERE"
     summary_folder = r"ENTER PATH HERE"
-    press_dict_path = None
+    custom_bins = None
     curve_selection = {"Category": "BS", 
                        "Curve": "D", 
                        "SD": 0}
@@ -624,5 +624,5 @@ if __name__ == "__main__":
          caliper_folder, 
          output_folder, 
          summary_folder, 
-         press_dict_path,
+         custom_bins,
          curve_selection)
