@@ -413,7 +413,11 @@ def main(pipe_tally, pump_stations, caliper_folder, output_folder, summary_folde
                     os.mkdir(results_path)
 
                 # Perform RLA for liquids
-                SSI, CI, MD49_SSI, cycles, MD49_bins, cbin_SSI, cbin_cycles_dct = rfa.liquid([upstream_pressure, downstream_pressure], time_data, results_path, dd, press_dict)
+                SSI, CI, MD49_SSI, cycles, MD49_bins, cbin_SSI, cbin_cycles_dct = rfa.liquid([upstream_pressure, downstream_pressure], time_data, results_path, dd, press_dict,
+                                                                                             save_history=False,
+                                                                                             save_cycles=False,
+                                                                                             save_md49=False,
+                                                                                             create_excel=False)
                 if cbin_cycles_dct is not None:
                     cbin_cycles = np.array(list(cbin_cycles_dct.values()))
                 else:

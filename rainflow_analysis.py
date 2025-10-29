@@ -1,12 +1,13 @@
-# -*- coding: utf-8 -*-
 """
 Rainflow Analysis
-Created on 08/08/2025
-
 The objective of this script is to perform a rainflow analysis on pressure history data.
-
-@author: evalencia
 """
+
+# ============================================================================
+# ONLY CHANGE THESE VARIABLES FOR DIFFERENT VERSIONS OF RLA TEMPLATE
+rla_template_folder = 'templates'
+rla_template_name = 'RLA (v1.8.3).xlsm'
+# ============================================================================
 
 import numpy as np
 import pandas as pd
@@ -17,8 +18,7 @@ import warnings
 import math
 import os
 
-templates_path = 'templates/'
-file_name = 'RLA (v1.8.3).xlsm'
+rla_template = os.path.join(rla_template_folder, rla_template_name)
 
 # Ignore all UserWarnings from openpyxl
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -62,7 +62,7 @@ class DentData:
         self.orientation = orientation
         self.vendor_comments = vendor_comments
 
-def liquid(P_list, P_time, results_path, dd, press_dict: dict = None, save_history:bool=False, save_cycles:bool=False, save_md49:bool=False):
+def liquid(P_list, P_time, results_path, dd, press_dict: dict = None, save_history:bool=False, save_cycles:bool=False, save_md49:bool=False, create_excel:bool=True):
     # Extract the information for the specified dent
     dent_category = dd.dent_category
     dent_ID = dd.dent_ID
@@ -104,8 +104,6 @@ def liquid(P_list, P_time, results_path, dd, press_dict: dict = None, save_histo
     else:
         Neq_SSI, bin_cycles = None, None
 
-    # create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys)
-
     if save_history:
         df_P = pd.DataFrame(data=P, columns=['Pressure (psig)'], index=P_time)
         df_P.to_csv(results_path + f"Feature {dent_ID} " + 'Interpolated_Pressure_History_Data.csv', header=False, index=False)
@@ -117,6 +115,9 @@ def liquid(P_list, P_time, results_path, dd, press_dict: dict = None, save_histo
     if save_md49:
         # Save the MD49_bins to a .txt file
         np.savetxt(results_path + f"Feature {dent_ID} " + 'md49_bins.csv', MD49_bins, delimiter=',')
+
+    if create_excel:
+        create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys)
     
     # Graphing
     liquid_graphing(dent_ID, results_path, P, P_time, dent_category)
@@ -159,7 +160,7 @@ def create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys):
     rainflow_column = 1 # Column A
     md49_column = 37    # Column AK
     
-    ref_path = templates_path + file_name
+    ref_path = rla_template
     wb = openpyxl.load_workbook(filename=ref_path, read_only=False, keep_vba=True)
     
     # Update the values in the Summary tab
@@ -174,7 +175,7 @@ def create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys):
     wbs['H4'] = str(dent_category)
     wbs['H5'] = str(dent_ID)
 
-    wbs['B72'] = file_name # Use this to keep track of file version
+    wbs['B72'] = rla_template_name # Use this to keep track of file version
     
     # Import the values in the Rainflow tab (begins on A3)
     wbs = wb['Rainflow']
@@ -191,7 +192,7 @@ def create_RLA_Excel(results_path, dd, cycles, MD49_bins, P_mean_smys):
     # Save the P_mean_smys
     wbs['K61'] = float(ili_pressure)
     wbs['K63'] = float(dent_depth_percent)
-    # wbs['K65'] = P_mean_smys
+    wbs['K65'] = float(P_mean_smys)
     wbs['K67'] = str(interaction_corrosion)
     wbs['K68'] = float(ml_depth_percent)
     wbs['K69'] = str(ml_location)

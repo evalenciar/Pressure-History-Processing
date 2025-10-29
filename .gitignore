@@ -1,7 +1,7 @@
 /All Results*
 /Archive
 /Combined Data
-/templates
+/templates/*.xlsm
 /Testing Grounds*
 /Pipe Tally
 /Local
@@ -11,6 +11,7 @@
 /.venv
 /Histogram Comparison
 /Jupyter Notebooks
+/Coefficient Tables1
 *.pyc
 *.ipynb
 *.xlsx

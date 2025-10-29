@@ -3,22 +3,27 @@ Custom VBA Functions converted into Python
 VBA Functions cover MD-2-4 and MD-5-3 methods for determining the Stress Range Magnification Factor (Km)
 """
 
+# ============================================================================
+# ONLY CHANGE THESE VARIABLES FOR DIFFERENT VERSIONS OF RLA TEMPLATE
+tables_folder = "tables"
+table_md = 'Tables_Coefficients.json'
+table_fatigue = 'Tables_FatigueCurves.json'
+
+rla_template_folder = "templates"
+rla_template_name = "RLA (v1.8.3) Display Only.xlsx"
+# ============================================================================
+
 import math
 import json
 import os
 import openpyxl
 import numpy as np
 import pandas as pd
-
 import rainflow_analysis as rfa
 import md49
 import traceback
 
-tables_folder = r"C:\Users\emman\Documents\SoftDev\Pressure History Processing\Coefficient Tables"
-rla_template = r"C:\Users\emman\Documents\SoftDev\Pressure History Processing\templates\RLA (v1.8.3) Display Only.xlsx"
-
-table_md = 'Tables_Coefficients.json'
-table_fatigue = 'Tables_FatigueCurves.json'
+rla_template = os.path.join(rla_template_folder, rla_template_name)
 
 # Default MD-4-9 bin values
 pmin_list = [10,10,10,10,10,10,10,20,20,20,20,20,20,30,30,30,30,30,40,40,40,40,50,50,50,60,60,70]

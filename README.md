@@ -17,7 +17,7 @@ The new `batch_v3.py` script consolidates the entire workflow into a single, str
 4. **Applies MD-2-4 Method**: Calculates stress concentration factors (Km) based on dent geometry and restraint conditions
 5. **Applies MD-5-3 Method**: Determines scale factors and performs remaining life analysis
 6. **Processes Caliper Data**: Smooths raw ILI measurements and extracts MD-4-9 geometric parameters
-7. **Generates Comprehensive Reports**: Creates detailed Excel workbooks for each dent with all analysis results
+7. **Generates Comprehensive Reports**: Creates detailed summary images and Excel workbooks for each dent with all analysis results
 
 ---
 
@@ -34,16 +34,17 @@ The new `batch_v3.py` script consolidates the entire workflow into a single, str
    - `Continuous Measure (m)`: Station positions
    - `Tag Name`: Station identifiers matching pressure history column headers
 
-3. **Caliper Folder**: Directory containing ILI caliper data files (.xlsx)
+3. **Caliper Folder**: Directory containing ILI caliper data files (.xlsx/.csv)
    - Raw measurement data for dent geometry analysis
    - Files should be named to match dent identifiers
+   - Ensure data formatting method exists by checking available ILI formats in `processing.py`
 
 4. **Output Folder**: Directory where individual dent analysis workbooks will be saved
 
 5. **Summary Folder**: Directory for summary reports and consolidated results
 
 ### **Optional Files**
-- **Press Dict File** (.xlsx/.json): Custom pressure bin definitions for specialized analysis
+- **Press Dict File** (.xlsx): Custom pressure bin definitions for specialized analysis
 
 ---
 
@@ -93,8 +94,8 @@ Each processed dent generates a comprehensive Excel workbook containing:
 ---
 
 ## Installation and Setup
+Use the provided `requirements.txt` document to install all necessary dependencies. Run the line below in your terminal.
 
-### **Dependencies**
 ```bash
-pip install pandas numpy openpyxl matplotlib rainflow scipy xlwings
+pip install -r requirements.txt
 ```
