@@ -7,7 +7,8 @@
 /Local
 /Validation
 /Manual Review
-/__pycache__/
+/__pycache__1
+/.vscode
 /.venv
 /Histogram Comparison
 /Jupyter Notebooks
