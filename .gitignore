@@ -3,6 +3,17 @@
 /Combined Data
 /templates
 /Testing Grounds*
+/Pipe Tally
+/Local
+/Validation
+/Manual Review
+/__pycache__/
+/.venv
+/Histogram Comparison
+/Jupyter Notebooks
+*.pyc
+*.ipynb
+*.xlsx
 
 # Ignore these files
 single_rainflow_analysis_v2.2.py

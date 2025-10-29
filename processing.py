@@ -342,6 +342,10 @@ def collect_raw_data_v11(rd_path):
     rd_circ = np.array([(x*360/len(rd_caliper)) for x in range(len(rd_caliper))])
     # Collect the radial values, convert from mm to inches, and ensure that the data structure is [r x c] = [axial x circ]
     rd_radius = rd.to_numpy().astype(float) / 25.4  # Convert from mm to inches
+    # TEMPORARY ROLL OF DATA START
+    roll_amount = math.ceil(rd.shape[1]/2 - np.unravel_index(np.argmin(rd), rd.shape)[1]) # Roll towards the center
+    rd_radius = np.roll(rd_radius, roll_amount, axis=1)
+    # TEMPORARY ROLL OF DATA END
     # Adjust each row of rd_radius by adding the IR value to the negative of rd_radius (values are negative direction)
     for i in range(rd_radius.shape[0]):
         rd_radius[i, :] = -rd_radius[i, :] + IR[i]
@@ -365,6 +369,10 @@ def collect_raw_data_v12(rd_path):
         rd_circ = np.linspace(0, 360, num=rd.shape[1], endpoint=False)
     # Collect the radial values, convert from mm to inches, and ensure that the data structure is [r x c] = [axial x circ]
     rd_radius = rd.to_numpy().astype(float) / 25.4  # Convert from mm to inches
+    # TEMPORARY ROLL OF DATA START
+    roll_amount = math.ceil(rd.shape[1]/2 - np.unravel_index(np.argmin(rd), rd.shape)[1]) # Roll towards the center
+    rd_radius = np.roll(rd_radius, roll_amount, axis=1)
+    # TEMPORARY ROLL OF DATA END
     return rd_axial, rd_circ, rd_radius
 
 
